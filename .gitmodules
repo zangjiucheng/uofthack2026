@@ -1,3 +1,6 @@
 [submodule "visual/Detic"]
 	path = visual/Detic
-	url = git@github.com:zangjiucheng/Detic.git
+	url = https://github.com/zangjiucheng/Detic.git
+[submodule "ui"]
+	path = ui
+	url = https://github.com/quequezhou124/identifai-ui.git
