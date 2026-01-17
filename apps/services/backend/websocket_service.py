@@ -71,6 +71,7 @@ class WebsocketService(Service):
                             "state": self.event_state.snapshot_dict() if hasattr(self.event_state, "snapshot_dict") else {},
                             "controller": self.controller_state.snapshot_dict() if self.controller_state else {"active": False},
                             "visual": VisualStateLiveStore.get(),
+                            "pi": self.raspi_state.snapshot_dict() if hasattr(self.raspi_state, "snapshot_dict") else {},
                         },
                         host=host,
                         port=port,
@@ -140,7 +141,8 @@ class WebsocketService(Service):
                                 if isinstance(state, dict):
                                     try:
                                         self.raspi_state.load_snapshot(state)
-                                    except Exception:
+                                    except Exception as e:
+                                        print(f"[websocket] Pi state WS load snapshot error: {e}")
                                         pass
                 except Exception as exc:  # pragma: no cover - background path
                     print(f"[websocket] Pi state WS subscribe failed: {exc}")

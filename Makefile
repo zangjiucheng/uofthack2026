@@ -53,6 +53,14 @@ PI_DEBUG_TRACE_OUT    ?= pi_threads.json          # Output file for debug trace
 RSYNC_DEST            ?= alex@100.124.216.108:~/uofthack2026
 RSYNC_FLAGS           ?= -av --delete --exclude='.git' --filter=':- .gitignore'
 
+# Frontend defaults (injected as Vite env)
+FE_HOST              ?= 100.110.140.48
+FE_STATE_WS_PORT     ?= 8765
+FE_VIDEO_WS_PORT     ?= 8890
+FE_REST_PORT         ?= 8080
+FE_CMD_POST_PATH     ?= set_tracking_roi
+FE_FACE_ONLY_PATH    ?= set_face_only
+
 .PHONY: run-frontend run-backend run-raspi rsync-remote install-frontend
 
 run-backend:
@@ -112,4 +120,10 @@ install-frontend:
 	cd ui && npm install
 
 run-frontend:
-	cd ui && npm run dev
+	cd ui && VITE_DEFAULT_HOST=$(FE_HOST) \
+		VITE_STATE_WS_PORT=$(FE_STATE_WS_PORT) \
+		VITE_VIDEO_WS_PORT=$(FE_VIDEO_WS_PORT) \
+		VITE_REST_PORT=$(FE_REST_PORT) \
+		VITE_CMD_POST_PATH=$(FE_CMD_POST_PATH) \
+		VITE_FACE_ONLY_PATH=$(FE_FACE_ONLY_PATH) \
+		npm run dev

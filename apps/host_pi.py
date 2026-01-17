@@ -4,7 +4,7 @@ import pathlib
 import threading
 
 from core.services import Service, ServiceContext
-from pi_hardware.robot.fake_robot_api import FakeBot
+from pi_hardware.robot.robot_api import Bot
 from states.raspi_states import RaspiStateStore
 from states.robot_fsm import (
     PiRobotState,
@@ -37,7 +37,7 @@ class PiRobotService(Service):
         self.ctx = ctx
         self.cfg = ctx.config
         self.raspi_state = RaspiStateStore()
-        self.robot = FakeBot()
+        self.robot = Bot()
         self._stop = threading.Event()
         self._handler = make_cmd_handler(
             robot=self.robot,
@@ -115,14 +115,24 @@ class PiRobotService(Service):
 
     def _status_payload(self):
         # Keep RaspiStateStore pi_status updated so host can reflect state/stop.
-        state_val = self.raspi_state.get_robot_state().value
-        status = {"state": state_val}
         try:
-            self.raspi_state.set_pi_status(status)
+            status = self._handler.status_payload()
+            try:
+                # Ensure store is updated even if handler does not.
+                self.raspi_state.set_pi_status(status)
+            except Exception:
+                pass
             self._last_status_ts = time.time()
+            return status
         except Exception:
-            pass
-        return status
+            state_val = self.raspi_state.get_robot_state().value
+            status = {"state": state_val}
+            try:
+                self.raspi_state.set_pi_status(status)
+                self._last_status_ts = time.time()
+            except Exception:
+                pass
+            return status
 
     def _status_heartbeat(self, interval: float = 1.0):
         """Push periodic status so consumers see fresh timestamps even if state doesn't change."""

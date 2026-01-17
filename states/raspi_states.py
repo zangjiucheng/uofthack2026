@@ -82,6 +82,10 @@ class RaspiState:
         now = time.time()
         merged = dict(self.pi_status)
         merged.update(status or {})
+        # Inline battery info into pi_status if provided
+        batt = status.get("battery") if isinstance(status, dict) else None
+        if isinstance(batt, dict):
+            merged["battery"] = dict(batt)
         # Consider anything beyond INIT as an active connection.
         state_val = merged.get("state")
         if state_val and str(state_val).upper() != PiRobotState.INIT.value:
@@ -221,6 +225,48 @@ class RaspiStateStore:
     def get_controller_state(self) -> Dict[str, Any]:
         with self._lock:
             return dict(self._state.controller)
+
+    def load_snapshot(self, snapshot: Dict[str, Any]) -> None:
+        """
+        Overwrite current raspi state from an external snapshot dict (e.g., WS).
+        """
+        if not isinstance(snapshot, dict):
+            return
+        with self._lock:
+            try:
+                # Restore pi_status and robot_state
+                pi_status = snapshot.get("pi_status", {})
+                if isinstance(pi_status, dict):
+                    self._state.pi_status = dict(pi_status)
+                    if "state" in pi_status:
+                        self._state.set_robot_state(pi_status["state"])
+
+                # Movement
+                mv = snapshot.get("movement", {})
+                if isinstance(mv, dict):
+                    try:
+                        ts = float(mv.get("ts", 0.0))
+                        speed = float(mv.get("speed", 0.0))
+                        turn = float(mv.get("turn", 0.0))
+                        self._state.movement = MovementState(ts=ts, speed=speed, turn=turn)
+                    except Exception:
+                        pass
+
+                # Visual and controller
+                if isinstance(snapshot.get("visual"), dict):
+                    self._state.visual = dict(snapshot["visual"])
+                if isinstance(snapshot.get("controller"), dict):
+                    self._state.controller = dict(snapshot["controller"])
+
+                # Events (optional)
+                events = snapshot.get("events")
+                if isinstance(events, list):
+                    try:
+                        self._state.events = list(events)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
 
 
 def get_cpu_temp(store: RaspiStateStore | None = None, path: str = "/sys/class/thermal/thermal_zone0/temp") -> float:

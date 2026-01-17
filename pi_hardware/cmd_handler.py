@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Callable
 import math
+import time
 
 from states.robot_fsm import PiRobotState
 from states.raspi_states import RaspiStateStore
@@ -17,9 +18,20 @@ def make_cmd_handler(
     Build a simple command handler that drives hardware actions for the Pi.
     Supports linear/angular velocity (converted to wheel RPS), head control, and basic pose ops.
     """
-    TRACK_WIDTH_M = float(getattr(robot, "track_width", 0.30) or 0.30)
-    WHEEL_RADIUS_M = float(getattr(robot, "wheel_radius", 0.05) or 0.05)
-    WHEEL_CIRC = 2 * math.pi * WHEEL_RADIUS_M
+    def clamp(v: float, lo: float, hi: float) -> float:
+        return lo if v < lo else hi if v > hi else v
+
+    # Smooth motor state (normalized -1..1 style speeds)
+    ACCEL_RATE = 1.8
+    DECEL_RATE = 2.4
+    MAX_SPEED = 1.0
+    motor_state = {
+        "left": 0.0,
+        "right": 0.0,
+        "run": 0.0,
+        "turn": 0.0,
+        "last_ts": time.time(),
+    }
 
     def status_payload():
         try:
@@ -28,13 +40,28 @@ def make_cmd_handler(
             state_val = None
         status = {"state": state_val}
         try:
-            status["motors_enabled"] = bool(getattr(robot, "motors", None) and getattr(robot.motors, "enabled", False))
-            status["motors_left_rps"] = getattr(getattr(robot, "motors", None), "left", None) and getattr(
-                robot.motors.left, "rps", None
-            )
-            status["motors_right_rps"] = getattr(getattr(robot, "motors", None), "right", None) and getattr(
-                robot.motors.right, "rps", None
-            )
+            motors = getattr(robot, "motors", None)
+            status["motors_enabled"] = bool(motors and getattr(motors, "enabled", False))
+
+            def _unwrap(val):
+                if val is None:
+                    return None
+                try:
+                    return float(getattr(val, "rps", val))
+                except Exception:
+                    return None
+
+            status["motors_left_rps"] = _unwrap(getattr(motors, "left", None))
+            status["motors_right_rps"] = _unwrap(getattr(motors, "right", None))
+
+            batt = getattr(robot, "battery", None)
+            if batt:
+                status["battery"] = {
+                    "voltage": float(getattr(batt, "voltage", 0.0)),
+                    "cell_voltage": float(getattr(batt, "cell_voltage", 0.0)),
+                    "cells": int(getattr(batt, "cells", 0)),
+                    "percentage": float(getattr(batt, "percentage", 0.0)),
+                }
         except Exception:
             pass
         try:
@@ -48,15 +75,39 @@ def make_cmd_handler(
         out.update(extra)
         return out
 
-    def _set_wheel_rps(left_rps: float, right_rps: float, *, enable: bool = True):
+    def _apply_wheel_speeds(target_left: float, target_right: float, *, enable: bool = True):
+        """
+        Smoothly ramp motor speeds toward targets (normalized units) to avoid jerks.
+        """
+        now = time.time()
+        dt = now - motor_state["last_ts"]
+        motor_state["last_ts"] = now
+        dt = min(dt, 0.2)
+
+        def _ramp(current: float, target: float) -> float:
+            rate = ACCEL_RATE if abs(target) > abs(current) else DECEL_RATE
+            step = rate * dt
+            if current < target:
+                return min(target, current + step)
+            return max(target, current - step)
+
+        cur_left, cur_right = motor_state["left"], motor_state["right"]
+        next_left = _ramp(cur_left, clamp(target_left, -MAX_SPEED, MAX_SPEED))
+        next_right = _ramp(cur_right, clamp(target_right, -MAX_SPEED, MAX_SPEED))
+
+        motor_state["left"] = next_left
+        motor_state["right"] = next_right
+        motor_state["run"] = (next_left + next_right) * 0.5
+        motor_state["turn"] = (next_left - next_right) * 0.5
+
         try:
             robot.motors.enabled = bool(enable)
-            robot.motors.left.rps = float(left_rps)
-            robot.motors.right.rps = float(right_rps)
+            robot.motors.left = float(next_left)
+            robot.motors.right = float(next_right)
         except Exception:
             # fallback to MotorController API if present
             try:
-                robot.drive(left_rps, right_rps)
+                robot.drive(next_left, next_right)
             except Exception:
                 pass
 
@@ -64,7 +115,15 @@ def make_cmd_handler(
         cmd_raw = payload.get("cmd") or ""
         cmd = cmd_raw.lower()
         if cmd == "stop":
-            _set_wheel_rps(0.0, 0.0, enable=False)
+            _apply_wheel_speeds(0.0, 0.0)
+            try:
+                raspi_state.set_movement(speed=0.0, turn=0.0)
+            except Exception:
+                pass
+            return _resp(True)
+        if cmd == "motors_control":
+            motor_enable = bool(payload.get("enable", True))
+            _apply_wheel_speeds(0.0, 0.0, enable=motor_enable)
             try:
                 raspi_state.set_movement(speed=0.0, turn=0.0)
             except Exception:
@@ -73,13 +132,16 @@ def make_cmd_handler(
         if cmd == "cmd_vel":
             v = float(payload.get("v", 0.0))
             w = float(payload.get("w", 0.0))
-            # Convert to wheel linear speeds then RPS.
-            left = v - 0.5 * TRACK_WIDTH_M * w
-            right = v + 0.5 * TRACK_WIDTH_M * w
-            left_rps = left / WHEEL_CIRC
-            right_rps = right / WHEEL_CIRC
-            _set_wheel_rps(left_rps, right_rps, enable=True)
-            return _resp(True, rps={"left": left_rps, "right": right_rps})
+            target_run = clamp(v, -MAX_SPEED, MAX_SPEED)
+            target_turn = clamp(w, -MAX_SPEED, MAX_SPEED)
+            target_left = target_run + target_turn
+            target_right = target_run - target_turn
+            _apply_wheel_speeds(target_left, target_right, enable=True)
+            try:
+                raspi_state.set_movement(speed=float(target_run), turn=float(target_turn))
+            except Exception:
+                pass
+            return _resp(True, rps={"left": motor_state["left"], "right": motor_state["right"]})
         if cmd == "set_head":
             yaw = float(payload.get("yaw", 0.0))
             pitch = float(payload.get("pitch", 0.0))
@@ -87,37 +149,6 @@ def make_cmd_handler(
                 robot.head.yaw = yaw
                 robot.head.pitch = pitch
                 return _resp(True, head={"yaw": yaw, "pitch": pitch})
-            except Exception as exc:
-                return {"ok": False, "error": str(exc)}
-        if cmd == "reset_pose":
-            x = float(payload.get("x", 0.0))
-            y = float(payload.get("y", 0.0))
-            direction = float(payload.get("dir", payload.get("direction", 0.0)))
-            try:
-                robot.position.reset(x=x, y=y, dir=direction)
-                return _resp(True, pose={"x": x, "y": y, "dir": direction})
-            except Exception as exc:
-                return {"ok": False, "error": str(exc)}
-        if cmd == "forward":
-            dist = float(payload.get("distance", 0.0))
-            vel = float(payload.get("velocity", payload.get("speed", 0.0)))
-            try:
-                robot.position.forward(distance=dist, velocity=vel)
-                return _resp(True)
-            except Exception as exc:
-                return {"ok": False, "error": str(exc)}
-        if cmd == "turn":
-            deg = float(payload.get("degrees", payload.get("deg", 0.0)))
-            try:
-                robot.position.turn(degrees=deg)
-                return _resp(True)
-            except Exception as exc:
-                return {"ok": False, "error": str(exc)}
-        if cmd == "face":
-            direction = float(payload.get("direction", payload.get("dir", 0.0)))
-            try:
-                robot.position.face(direction=direction)
-                return _resp(True)
             except Exception as exc:
                 return {"ok": False, "error": str(exc)}
         if cmd in {"visual_state", "visual"}:

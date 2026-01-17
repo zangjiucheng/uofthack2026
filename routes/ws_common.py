@@ -40,7 +40,13 @@ async def _state_stream(websocket, interval: float, payload_builder) -> None:
             except Exception:
                 payload = None
             if payload is not None:
-                await websocket.send(json.dumps(payload))
+                try:
+                    await websocket.send(json.dumps(payload))
+                except ConnectionClosed:
+                    break
+                except Exception as exc:
+                    print(f"[router] State WS send failed: {exc}")
+                    break
             await asyncio.sleep(interval)
     except ConnectionClosed:
         return

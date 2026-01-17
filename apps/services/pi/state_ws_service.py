@@ -63,6 +63,7 @@ class PiStateWSService(Service):
             async def consume():
                 while not self._stop.is_set():
                     try:
+                        print(f"[pi_robot] Connecting to backend state WS at {self._sub_url}...")
                         async with websockets.connect(self._sub_url, max_size=self._sub_max_size) as ws:  # type: ignore[arg-type]
                             print(f"[pi_robot] Subscribed to backend state WS at {self._sub_url}")
                             async for message in ws:
@@ -117,7 +118,15 @@ class PiStateWSService(Service):
                 # Remove visual/controller to reduce payload size.
                 state.pop("visual", None)
                 state.pop("controller", None)
-                return {"ts": time.time(), "state": state}
+                battery = None
+                try:
+                    battery = state.get("pi_status", {}).get("battery")
+                except Exception:
+                    battery = None
+                payload = {"ts": time.time(), "state": state}
+                if battery:
+                    payload["battery"] = battery
+                return payload
 
             try:
                 asyncio.run(

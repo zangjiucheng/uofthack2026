@@ -67,6 +67,7 @@ def handle_idle(cmd_handler):
         return
     active = bool(ctrl.get("manual_activate"))
     if active:
+        cmd_handler({"cmd": "motors_control", "enable": True})
         set_state(PiRobotState.MANUAL)
         return
 
@@ -104,6 +105,7 @@ def handle_manual(cmd_handler):
             cmd_handler({"cmd": "stop"})
         except Exception:
             pass
+        cmd_handler({"cmd": "motors_control", "enable": False})
         set_state(PiRobotState.IDLE)
         return
 
