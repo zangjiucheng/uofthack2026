@@ -9,7 +9,6 @@ from detectron2.utils.visualizer import Visualizer
 
 from core.services import Service
 from utils.display_utils import tile_frames
-from visual.Detic.pipeline import DeticRunner
 from visual.Face.face_id import FaceIDPipeline
 from visual.Track.track import TrackerState, process_frame as track_process_frame, create_tracker, MIN_INTERVAL
 from states.visual_states import (
@@ -39,6 +38,12 @@ class _DeticAsyncProcessor:
         self._stop = stop_event
         self._interval = max(0.0, interval)
         self._show = show
+        try:
+            from visual.Detic.pipeline import DeticRunner
+        except Exception as exc:
+            # Raise a clear error so callers can gracefully fall back to a no-op pipeline.
+            raise RuntimeError(f"Detic unavailable: {exc}") from exc
+
         self.runner = DeticRunner(object_list=None, visualize=False)
         self._frame_lock = threading.Lock()
         self._runner_lock = threading.Lock()
@@ -142,15 +147,13 @@ class StreamService(Service):
     def start(self):
         self._stop.clear()
         source = os.environ.get("APP_STREAM_SOURCE", "cap").lower()
-        pipeline_name = os.environ.get("APP_STREAM_PIPELINE", "detic").lower()
-        self._show = os.environ.get("APP_STREAM_SHOW", "0") == "1"
         resize_factor = float(os.environ.get("APP_STREAM_RESIZE", "1.0"))
         resize_factor = min(1.0, max(0.2, resize_factor)) if resize_factor > 0 else 1.0
         max_fps = float(os.environ.get("APP_STREAM_MAX_FPS", "30"))
         min_proc_interval = 1.0 / max_fps if max_fps > 0 else 0.0
 
         get_frame, cleanup_source, source_desc = self._build_stream_source(source)
-        process, pipeline_desc = self._build_stream_pipeline(pipeline_name, show=self._show)
+        process, pipeline_desc = self._build_stream_pipeline()
         self._cleanup_source = cleanup_source
 
         def run_process(frame):
@@ -432,84 +435,24 @@ class StreamService(Service):
 
         raise ValueError(f"Unknown stream source: {source}")
 
-    def _build_stream_pipeline(self, pipeline: str, show: bool):
+    def _build_stream_pipeline(self):
         """
         Return (process_fn, description).
         process_fn(frame) -> annotated frame or None
         """
-        pipeline = pipeline.lower()
-        if pipeline == "face":
-            face = FaceIDPipeline()
-            self._face_pipeline = face
+        face = FaceIDPipeline()
+        self._face_pipeline = face
+        state = TrackerState()
+        tracker = create_tracker("CSRT")
+        auto_roi = os.environ.get("APP_TRACK_AUTO_ROI", "0") == "1"
+        track_min_interval = float(os.environ.get("APP_TRACK_MIN_INTERVAL", str(MIN_INTERVAL)))
+        roi_set = False
 
-            def process(frame):
-                matches, annotated = face.process_frame(frame, draw=True)
-                VisualStateStore.update(face=_face_state_from_matches(matches))
-                return {"main": annotated, "face": annotated}
+        detic_interval = float(os.environ.get("APP_DETIC_INTERVAL", "4"))
+        detic_submit = self._build_detic_async_processor(show=True, interval=detic_interval)
 
-            return process, "FaceID pipeline"
-
-        if pipeline == "track":
-            state = TrackerState()
-            tracker = create_tracker("CSRT")
-            auto_roi = os.environ.get("APP_TRACK_AUTO_ROI", "0") == "1"
-            track_min_interval = float(os.environ.get("APP_TRACK_MIN_INTERVAL", str(MIN_INTERVAL)))
-            roi_set = False
-
-            def process(frame):
-                nonlocal roi_set
-                pending = self._pop_track_roi()
-                if pending:
-                    tracker_local = create_tracker("CSRT")
-                    ok = tracker_local.init(frame, pending)
-                    state.tracker = tracker_local if ok else state.tracker
-                    state.have_roi = bool(ok)
-                    state.bbox = pending if ok else state.bbox
-                    state.last_seen = time.time()
-                with self._track_lock:
-                    if self._reset_track:
-                        state.tracker = None
-                        state.have_roi = False
-                        state.bbox = None
-                        self._reset_track = False
-
-                if auto_roi and not roi_set:
-                    h, w = frame.shape[:2]
-                    roi_w, roi_h = int(w * 0.4), int(h * 0.4)
-                    x, y = (w - roi_w) // 2, (h - roi_h) // 2
-                    roi = (float(x), float(y), float(roi_w), float(roi_h))
-                    if tracker.init(frame, roi):
-                        state.tracker = tracker
-                        state.have_roi = True
-                        state.bbox = roi
-                        roi_set = True
-                annotated, _ = track_process_frame(frame, state, select_new_roi=False, min_interval=track_min_interval)
-                VisualStateStore.update(track=_track_state_from_tracker(state))
-                return {"main": annotated, "track": annotated}
-
-            return process, "Tracker pipeline (auto ROI)"
-
-        if pipeline == "detic":
-            detic_interval = float(os.environ.get("APP_DETIC_INTERVAL", "4"))
-            detic_submit = self._build_detic_async_processor(show=True, interval=detic_interval)
-
-            def process(frame):
-                detic_frame = detic_submit(frame)
-                return {"main": detic_frame}
-
-            return process, "Detic pipeline"
-
-        if pipeline == "all":
-            face = FaceIDPipeline()
-            self._face_pipeline = face
-            state = TrackerState()
-            tracker = create_tracker("CSRT")
-            auto_roi = os.environ.get("APP_TRACK_AUTO_ROI", "0") == "1"
-            track_min_interval = float(os.environ.get("APP_TRACK_MIN_INTERVAL", str(MIN_INTERVAL)))
-            roi_set = False
-
-            detic_interval = float(os.environ.get("APP_DETIC_INTERVAL", "4"))
-            detic_submit = self._build_detic_async_processor(show=True, interval=detic_interval)
+        if detic_submit is None:
+            print("[stream] Detic unavailable; running face + track only.")
 
             def process(frame):
                 nonlocal roi_set
@@ -544,23 +487,56 @@ class StreamService(Service):
                 matches, face_frame = face.process_frame(frame, draw=True)
                 VisualStateStore.update(face=_face_state_from_matches(matches))
 
-                detic_frame = detic_submit(frame)
-
                 return {
-                    "main": detic_frame,
+                    "main": frame,
                     "face": face_frame,
                     "track": track_frame,
                 }
 
-            return process, "All pipelines (track + face + detic)"
+            return process, "Face + Track pipeline (detic unavailable)"
 
-        if pipeline == "none":
-            def process(frame):
-                return {"main": frame}
+        def process(frame):
+            nonlocal roi_set
+            track_frame = frame.copy()
+            pending = self._pop_track_roi()
+            if pending:
+                tracker_local = create_tracker("CSRT")
+                ok = tracker_local.init(track_frame, pending)
+                state.tracker = tracker_local if ok else state.tracker
+                state.have_roi = bool(ok)
+                state.bbox = pending if ok else state.bbox
+                state.last_seen = time.time()
+            with self._track_lock:
+                if self._reset_track:
+                    state.tracker = None
+                    state.have_roi = False
+                    state.bbox = None
+                    self._reset_track = False
+            if auto_roi and not roi_set:
+                h, w = track_frame.shape[:2]
+                roi_w, roi_h = int(w * 0.4), int(h * 0.4)
+                x, y = (w - roi_w) // 2, (h - roi_h) // 2
+                roi = (float(x), float(y), float(roi_w), float(roi_h))
+                if tracker.init(track_frame, roi):
+                    state.tracker = tracker
+                    state.have_roi = True
+                    state.bbox = roi
+                    roi_set = True
+            track_frame, _ = track_process_frame(track_frame, state, select_new_roi=False, min_interval=track_min_interval)
+            VisualStateStore.update(track=_track_state_from_tracker(state))
 
-            return process, "No-op pipeline"
+            matches, face_frame = face.process_frame(frame, draw=True)
+            VisualStateStore.update(face=_face_state_from_matches(matches))
 
-        raise ValueError(f"Unknown stream pipeline: {pipeline}")
+            detic_frame = detic_submit(frame)
+
+            return {
+                "main": detic_frame,
+                "face": face_frame,
+                "track": track_frame,
+            }
+
+        return process, "All pipelines (track + face + detic)"
 
     def _build_detic_async_processor(self, show: bool, interval: float):
         """
@@ -569,7 +545,12 @@ class StreamService(Service):
         """
         if self._detic_processor:
             self._detic_processor.shutdown()
-        self._detic_processor = _DeticAsyncProcessor(show=show, interval=interval, stop_event=self._stop)
+        try:
+            self._detic_processor = _DeticAsyncProcessor(show=show, interval=interval, stop_event=self._stop)
+        except Exception as exc:
+            print(f"[stream] Detic init failed; disabling detic pipeline. Error: {exc}")
+            self._detic_processor = None
+            return None
 
         def submit(frame):
             if not self._detic_processor:

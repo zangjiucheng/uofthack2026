@@ -3,8 +3,6 @@ PYTHON ?= python
 # Stream source/pipeline knobs (for run-backend target)
 # --- APP MODE ---
 APP_STREAM_SOURCE      ?= pi                    # cap | pi
-APP_STREAM_PIPELINE    ?= all                   # detic | face | track | all | none (Visual pipeline to run)
-APP_STREAM_SHOW        ?= 0                     # 1 to open a preview window (for debug only)
 APP_CAM_INDEX          ?= 0                     # camera index when STREAM_SOURCE=cap (Debug: cap stream source only)
 APP_STREAM_RESIZE      ?= 0.8                   # Resize factor for input stream (Debug: cap stream source only)
 APP_STREAM_URL         ?= http://127.0.0.1:9000/stream.mjpg # MJPEG stream URL when STREAM_SOURCE=cap
@@ -58,8 +56,6 @@ run-backend:
 	APP_DEBUG_TRACE=$(APP_DEBUG_TRACE) \
 	APP_DEBUG_TRACE_OUT=$(APP_DEBUG_TRACE_OUT) \
 	APP_STREAM_SOURCE=$(APP_STREAM_SOURCE) \
-	APP_STREAM_PIPELINE=$(APP_STREAM_PIPELINE) \
-	APP_STREAM_SHOW=$(APP_STREAM_SHOW) \
 	APP_STREAM_CAM_INDEX=$(APP_CAM_INDEX) \
 	APP_STREAM_URL=$(APP_STREAM_URL) \
 	APP_STREAM_RESIZE=$(APP_STREAM_RESIZE) \
