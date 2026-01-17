@@ -99,3 +99,10 @@ run-raspi:
 	PI_DEBUG_TRACE=$(PI_DEBUG_TRACE) \
 	PI_DEBUG_TRACE_OUT=$(PI_DEBUG_TRACE_OUT) \
 	$(PYTHON) main.py
+
+install-frontend:
+	git submodule update --init --recursive
+	cd ui && npm install
+
+run-frontend:
+	cd ui && npm run dev
