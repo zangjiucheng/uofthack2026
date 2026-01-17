@@ -1,0 +1,7 @@
+# Note: This is not a complete list of requirements; dependencies within each module may vary. Please use setup.sh to set up the environment.
+torch
+fasttext
+onnxruntime
+
+# For development and debugging only
+viztracer

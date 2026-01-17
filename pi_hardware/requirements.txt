@@ -1,0 +1,3 @@
+picamera2
+opencv-python
+websockets>=11.0

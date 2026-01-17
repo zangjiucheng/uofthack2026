@@ -1,0 +1,3 @@
+[submodule "visual/Detic"]
+	path = visual/Detic
+	url = git@github.com:zangjiucheng/Detic.git
