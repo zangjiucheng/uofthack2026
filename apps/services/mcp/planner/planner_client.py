@@ -5,7 +5,7 @@ import os
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Optional
 
 
 @dataclass(frozen=True)
@@ -43,7 +43,6 @@ class PlannerClient:
         *,
         transcript: str,
         context: Optional[Dict[str, Any]] = None,
-        tools: Optional[Union[List[Dict[str, Any]], List[str]]] = None,
     ) -> Dict[str, Any]:
         if not self.cfg.base_url:
             return {"ok": False, "error": "Planner URL not set (APP_PLANNER_URL / PLANNER_URL / PLANNER_HOST+PLANNER_PORT)"}
@@ -53,8 +52,6 @@ class PlannerClient:
             return {"ok": False, "error": "transcript required"}
 
         payload: Dict[str, Any] = {"transcript": transcript, "context": context or {}}
-        if tools is not None:
-            payload["tools"] = tools
 
         url = f"{self.cfg.base_url}/plan"
         data = json.dumps(payload).encode("utf-8")

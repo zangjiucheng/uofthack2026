@@ -19,6 +19,27 @@ def _on_fail_mode(step: Dict[str, Any]) -> str:
     return mode if mode in ("stop", "continue") else "stop"
 
 
+def _simple_action_step(plan: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    tool = plan.get("tool")
+    payload = plan.get("payload")
+    if payload is None and plan.get("args") is not None:
+        payload = plan.get("args")
+
+    action = plan.get("action")
+    if isinstance(action, dict):
+        tool = action.get("tool") or action.get("name") or tool
+        if action.get("payload") is not None:
+            payload = action.get("payload")
+        elif action.get("args") is not None:
+            payload = action.get("args")
+
+    if not isinstance(tool, str) or not tool.strip():
+        return None
+
+    args = payload if isinstance(payload, dict) else {}
+    return {"type": "tool", "name": tool.strip(), "args": args}
+
+
 class McpExecutor:
     def __init__(
         self,
@@ -36,7 +57,8 @@ class McpExecutor:
         self.per_step_timeout_s = float(per_step_timeout_s)
 
     def execute_plan(self, plan: Dict[str, Any], initial_state: Optional[Dict[str, Any]] = None) -> str:
-        st = self.store.create(plan=plan or {}, initial_state=initial_state or {})
+        normalized_plan = self._normalize_plan(plan)
+        st = self.store.create(plan=normalized_plan, initial_state=initial_state or {})
         t = threading.Thread(target=self._run, args=(st.run_id,), daemon=True)
         t.start()
         return st.run_id
@@ -64,9 +86,23 @@ class McpExecutor:
                 if k not in state["vars"]:
                     state["vars"][k] = v
 
-        steps = plan.get("steps") or []
+        steps_in_plan = plan.get("steps")
+        steps: List[Dict[str, Any]] = []
+        if isinstance(steps_in_plan, list) and steps_in_plan:
+            steps = steps_in_plan
+        else:
+            simple_step = _simple_action_step(plan)
+            if simple_step:
+                steps = [simple_step]
+            elif isinstance(steps_in_plan, list):
+                steps = steps_in_plan
+
         if not isinstance(steps, list):
             self.store.finish(run_id, status="failed", error="plan.steps must be a list")
+            return
+
+        if not steps:
+            self.store.finish(run_id, status="failed", error="plan missing executable steps")
             return
 
         ok = self._exec_steps(st, steps, state, path="steps", max_steps=max_steps, per_step_timeout=per_step_timeout)
@@ -400,3 +436,21 @@ class McpExecutor:
         if not done.is_set():
             return {"ok": False, "error": f"tool timeout after {timeout_s}s"}
         return out
+
+    def _normalize_plan(self, plan: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Ensure a single-action plan includes a steps array for execution.
+        """
+        plan = dict(plan or {})
+        steps_in_plan = plan.get("steps")
+        if isinstance(steps_in_plan, list) and steps_in_plan:
+            return plan
+
+        simple_step = _simple_action_step(plan)
+        if simple_step:
+            plan["steps"] = [simple_step]
+        elif isinstance(steps_in_plan, list):
+            plan["steps"] = steps_in_plan
+        else:
+            plan["steps"] = []
+        return plan

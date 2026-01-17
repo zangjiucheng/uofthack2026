@@ -70,7 +70,7 @@ FE_FACE_ONLY_PATH    ?= set_face_only
 
 .PHONY: run-frontend run-backend run-raspi rsync-remote install-frontend
 # MCP MODE knobs
-LLM_PROVIDER            ?= openai
+LLM_PROVIDER            ?= gemini
 OPENAI_MODEL            ?= gpt-4o-mini
 OPENAI_BASE_URL         ?= https://api.openai.com
 OPENAI_API_KEY			?= 
