@@ -154,7 +154,7 @@ def handle_manual(cmd_handler):
 
 
 def handle_error(cmd_handler):
-    """TODO: implement ERROR handling logic."""
+    
     raise NotImplementedError("handle_error is not implemented yet")
 
 

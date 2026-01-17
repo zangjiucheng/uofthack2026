@@ -235,7 +235,7 @@ class RestApiService(Service):
             mode, custom, _ = EyeStateStore.snapshot()
             return {"ok": True, "mode": mode, "has_custom": custom is not None}
 
-        def get_text_message(payload):
+        def post_text_message(payload):
             """
             Return a plain text message for UI consumption.
             Accepts { "text": "..." }.
@@ -245,7 +245,7 @@ class RestApiService(Service):
                 return {"ok": False, "error": "text required"}
             return {"ok": True, "text": text}
 
-        def get_mp3(payload):
+        def post_mp3(payload):
             """
             Return MP3 audio as base64 for UI playback.
             Accepts audio_b64 or audio_path (mp3 file).
@@ -261,7 +261,7 @@ class RestApiService(Service):
                 return {"ok": False, "error": "audio_b64 or audio_path required"}
             return {"ok": True, "content_type": "audio/mpeg", "audio_b64": str(audio_b64)}
 
-        def get_wav(payload):
+        def post_wav(payload):
             """
             Return WAV audio as base64 for UI playback.
             Accepts audio_b64 or audio_path (wav file).
@@ -296,9 +296,9 @@ class RestApiService(Service):
             self.register("eyes_custom", eyes_custom)
             self.register("eyes_clear", eyes_clear)
             self.register("eyes_state", eyes_state)
-        self.register("get_text_message", get_text_message)
-        self.register("get_mp3", get_mp3)
-        self.register("get_wav", get_wav)
+        self.register("post_text_message", post_text_message)
+        self.register("post_mp3", post_mp3)
+        self.register("post_wav", post_wav)
 
     def start(self):
         if self._server is not None:
