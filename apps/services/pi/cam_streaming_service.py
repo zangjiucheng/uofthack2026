@@ -109,8 +109,12 @@ class CamStreamingService(Service):
         self.video_port = video_port
         self._thread: threading.Thread | None = None
         self._use_local_cam = os.environ.get("PI_DEBUG_LOCAL", "0") == "1"
+        self._enabled = os.environ.get("PI_DEBUG_LOCAL", "0") == "1"
 
     def start(self):
+        if not self._enabled:
+            print("[pi_robot] Camera streaming disabled (PI_DEBUG_LOCAL!=1)")
+            return
         print(f"[pi_robot] Streaming camera at port {self.video_port} (local cam: {self._use_local_cam})")
         if self._thread and self._thread.is_alive():
             return
