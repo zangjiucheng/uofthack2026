@@ -182,6 +182,21 @@ class RestApiService(Service):
                 return {"ok": False, "error": "face pipeline not available"}
             return {"ok": True, "faces": faces}
 
+        def list_detics(payload):
+            snap = VisualStateStore.snapshot()
+            detic_state = snap.get("detic")
+            if detic_state is None:
+                return {"ok": False, "error": "detic state unavailable"}
+
+            detections = getattr(detic_state, "detections", None) or []
+            labels: list[str] = []
+            for det in detections:
+                label = getattr(det, "label", None)
+                if label:
+                    labels.append(str(label))
+
+            return {"ok": True, "detections": labels, "ts": getattr(detic_state, "ts", None)}
+
         self.register("start_face_record", start_face_record)
         self.register("approach_object", approach_object)
         self.register("approach_person", approach_person)
@@ -195,6 +210,7 @@ class RestApiService(Service):
         self.register("reset_face_db", reset_face_db)
         self.register("update_detic_objects", update_detic_objects)
         self.register("trigger_detic", trigger_detic)
+        self.register("list_detics", list_detics)
 
     def start(self):
         if self._server is not None:

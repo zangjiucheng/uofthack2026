@@ -184,6 +184,10 @@
         <button id="detic-trigger" style="padding:8px 12px; background:#22c55e; color:white; border:none; border-radius:4px;">Run once</button>
       </div>
       <div id="detic-status" style="font-size:0.85rem; margin-top:6px; color:#9ca3af;"></div>
+      <div style="margin-top:10px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <button id="detic-list" style="padding:8px 12px; background:#6b7280; color:white; border:none; border-radius:4px;">List Detic labels</button>
+        <pre id="detic-list-out" style="flex:1; min-height:60px; max-height:200px; margin:0; font-size:0.8rem;">[]</pre>
+      </div>
     </div>
   </div>
 
@@ -291,6 +295,8 @@
     const deticUpdateBtn = document.getElementById("detic-update");
     const deticTriggerBtn = document.getElementById("detic-trigger");
     const deticStatus = document.getElementById("detic-status");
+    const deticListBtn = document.getElementById("detic-list");
+    const deticListOut = document.getElementById("detic-list-out");
 
     // ----------------------------
     // State (robot pose can be "real" from backend OR faked locally)
@@ -1061,6 +1067,27 @@
               body: "{}",
             });
             const data = await res.json();
+            deticStatus.textContent = "Response: " + JSON.stringify(data);
+            deticStatus.style.color = data.ok ? "#9ca3af" : "#f87171";
+          } catch (err) {
+            deticStatus.textContent = "Error: " + err;
+            deticStatus.style.color = "#f87171";
+          }
+        };
+      }
+
+      if (deticListBtn && deticListOut && deticStatus) {
+        deticListBtn.onclick = async () => {
+          deticStatus.textContent = "Listing Detic detections...";
+          deticStatus.style.color = "#9ca3af";
+          try {
+            const res = await fetch(`${BACKEND_REST_URL}/list_detics`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: "{}",
+            });
+            const data = await res.json();
+            deticListOut.textContent = JSON.stringify(data.detections ?? data, null, 2);
             deticStatus.textContent = "Response: " + JSON.stringify(data);
             deticStatus.style.color = data.ok ? "#9ca3af" : "#f87171";
           } catch (err) {
