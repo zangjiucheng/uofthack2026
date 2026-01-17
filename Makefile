@@ -3,6 +3,8 @@ PYTHON ?= python
 # Stream source/pipeline knobs (for run-backend target)
 # --- APP MODE ---
 APP_STREAM_SOURCE      ?= pi                    # cap | pi
+APP_STREAM_PIPELINE    ?= all                   # detic | face | track | all | none (Visual pipeline to run)
+APP_STREAM_SHOW        ?= 0                     # 1 to open a preview window (for debug only)
 APP_CAM_INDEX          ?= 0                     # camera index when STREAM_SOURCE=cap (Debug: cap stream source only)
 APP_STREAM_RESIZE      ?= 0.8                   # Resize factor for input stream (Debug: cap stream source only)
 APP_STREAM_URL         ?= http://100.124.216.108:8000 # MJPEG stream URL when STREAM_SOURCE=cap
@@ -54,12 +56,40 @@ RSYNC_DEST            ?= alex@100.124.216.108:~/uofthack2026
 RSYNC_FLAGS           ?= -av --delete --exclude='.git' --filter=':- .gitignore'
 
 .PHONY: run-frontend run-backend run-raspi rsync-remote install-frontend
+# MCP MODE knobs
+LLM_PROVIDER            ?= openai
+OPENAI_MODEL            ?= gpt-4o-mini
+OPENAI_BASE_URL         ?= https://api.openai.com
+OPENAI_API_KEY			?= 
+OLLAMA_MODEL            ?= qwen2.5:3b
+OLLAMA_BASE_URL         ?= http://127.0.0.1:11434
+GEMINI_MODEL            ?= gemini-2.5-flash
+GEMINI_API_KEY          ?= 
+APP_GEMINI_MAX_OUTPUT_TOKENS ?= 2048
+APP_GEMINI_EMBED_MODEL  ?= text-embedding-004
+APP_PLANNER_TOKEN       ?= 
+APP_PLANNER_URL			?= http://127.0.0.1:8091
+APP_PLANNER_HOST        ?= 127.0.0.1
+APP_PLANNER_SERVICE 	?= 1
+APP_PLANNER_PORT        ?= 8091
+APP_PLANNER_TIMEOUT_S	?= 20.0
+VOSK_MODEL_PATH        	?= apps/services/mcp/stt/model/vosk-model-small-en-us-0.15
+
+APP_MCP_REST           	?= 1
+APP_MCP_REST_HOST   	?= 127.0.0.1
+APP_MCP_REST_PORT   	?= 8090
+
+APP_BACKEND_REST_URL 	?= http://127.0.0.1:8080
+
+.PHONY: run-backend run-raspi run-mcp
 
 run-backend:
 	APP_MODE=backend \
 	APP_DEBUG_TRACE=$(APP_DEBUG_TRACE) \
 	APP_DEBUG_TRACE_OUT=$(APP_DEBUG_TRACE_OUT) \
 	APP_STREAM_SOURCE=$(APP_STREAM_SOURCE) \
+	APP_STREAM_PIPELINE=$(APP_STREAM_PIPELINE) \
+	APP_STREAM_SHOW=$(APP_STREAM_SHOW) \
 	APP_STREAM_CAM_INDEX=$(APP_CAM_INDEX) \
 	APP_STREAM_URL=$(APP_STREAM_URL) \
 	APP_STREAM_RESIZE=$(APP_STREAM_RESIZE) \
@@ -113,3 +143,32 @@ install-frontend:
 
 run-frontend:
 	cd ui && npm run dev
+run-mcp:
+	KB_INGEST_DEBUG=1 \
+	APP_MODE=mcp \
+	APP_MCP_REST=$(APP_MCP_REST) \
+	APP_MCP_REST_HOST=$(APP_MCP_REST_HOST) \
+	APP_MCP_REST_PORT=$(APP_MCP_REST_PORT) \
+	APP_PLANNER_SERVICE=$(APP_PLANNER_SERVICE) \
+	APP_PLANNER_HOST=$(APP_PLANNER_HOST) \
+	APP_PLANNER_PORT=$(APP_PLANNER_PORT) \
+	APP_PLANNER_URL=$(APP_PLANNER_URL) \
+	APP_PLANNER_TOKEN=$(APP_PLANNER_TOKEN) \
+	APP_PLANNER_TIMEOUT_S=$(APP_PLANNER_TIMEOUT_S) \
+	PLANNER_TOKEN=$(APP_PLANNER_TOKEN) \
+	APP_BACKEND_REST_URL=$(APP_BACKEND_REST_URL) \
+	APP_PI_REST_URL=$(APP_PI_REST_URL) \
+	VOSK_MODEL_PATH=$(VOSK_MODEL_PATH) \
+	LLM_PROVIDER=$(LLM_PROVIDER) \
+	OPENAI_MODEL=$(OPENAI_MODEL) \
+	OPENAI_BASE_URL=$(OPENAI_BASE_URL) \
+	OPENAI_API_KEY=$(OPENAI_API_KEY) \
+	APP_LLM_PROVIDER=$(LLM_PROVIDER) \
+	APP_GEMINI_MODEL=$(GEMINI_MODEL) \
+	APP_GEMINI_API_KEY=$(GEMINI_API_KEY) \
+	APP_GEMINI_EMBED_MODEL=$(APP_GEMINI_EMBED_MODEL) \
+	APP_GEMINI_MAX_OUTPUT_TOKENS=$(APP_GEMINI_MAX_OUTPUT_TOKENS) \
+	OLLAMA_MODEL=$(OLLAMA_MODEL) \
+	OLLAMA_BASE_URL=$(OLLAMA_BASE_URL) \
+	KB_INGEST_DEBUG=$(KB_INGEST_DEBUG) \
+	$(PYTHON) main.py

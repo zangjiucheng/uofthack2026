@@ -126,6 +126,8 @@ def make_cmd_handler(
                 raspi_state.set_visual_state(visual)
                 return _resp(True, visual=visual)
             return {"ok": False, "error": "visual payload must be a dict"}
+        if cmd == "status":
+            return _resp(True)
         return {"ok": False, "error": "unknown cmd"}
 
     handler.status_payload = status_payload

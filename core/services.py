@@ -104,5 +104,4 @@ class ServiceRegistry:
             try:
                 service.stop()
             except Exception:
-                # Best-effort cleanup; callers can inspect/log separately.
                 pass

@@ -39,6 +39,17 @@ def start_rest_server(command_registry: CommandRegistry, host: str = "0.0.0.0", 
             self._set_cors()
             self.end_headers()
 
+        def do_GET(self):  # noqa: N802
+            cmd = self.path.lstrip("/")
+            resp = command_registry.dispatch(cmd, {})
+            data = json.dumps(resp).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self._set_cors()
+            self.end_headers()
+            self.wfile.write(data)
+
         def do_POST(self):  # noqa: N802
             length = int(self.headers.get("Content-Length", "0"))
             body = self.rfile.read(length) if length > 0 else b"{}"
