@@ -91,7 +91,6 @@ def handle_manual(cmd_handler):
     """
     raspi_state = getattr(cmd_handler, "raspi_state", None)
     set_state = getattr(cmd_handler, "set_state", None)
-    robot = getattr(cmd_handler, "robot", None)
     if not raspi_state or not set_state:
         return
     try:

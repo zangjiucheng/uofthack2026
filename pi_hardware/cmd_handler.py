@@ -65,6 +65,10 @@ def make_cmd_handler(
         cmd = cmd_raw.lower()
         if cmd == "stop":
             _set_wheel_rps(0.0, 0.0, enable=False)
+            try:
+                raspi_state.set_movement(speed=0.0, turn=0.0)
+            except Exception:
+                pass
             return _resp(True)
         if cmd == "cmd_vel":
             v = float(payload.get("v", 0.0))
@@ -122,8 +126,6 @@ def make_cmd_handler(
                 raspi_state.set_visual_state(visual)
                 return _resp(True, visual=visual)
             return {"ok": False, "error": "visual payload must be a dict"}
-        if cmd == "status":
-            return _resp(True)
         return {"ok": False, "error": "unknown cmd"}
 
     handler.status_payload = status_payload
