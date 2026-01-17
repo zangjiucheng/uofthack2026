@@ -217,3 +217,19 @@ class EyeRenderer:
 
     def render_face(self, face: FaceState) -> Tuple[Image.Image, Image.Image]:
         return self.render_eye(face.left), self.render_eye(face.right)
+
+    def render_face_surface(self, face: FaceState):
+        """
+        Convenience for pygame consumers: returns a tuple of pygame.Surface objects
+        (converted from PIL) if pygame is available; otherwise returns PIL images.
+        """
+        left, right = self.render_face(face)
+        try:
+            import pygame  # type: ignore
+
+            def to_surface(img: Image.Image):
+                return pygame.image.fromstring(img.convert("RGB").tobytes(), img.size, "RGB")
+
+            return to_surface(left), to_surface(right)
+        except Exception:
+            return left, right

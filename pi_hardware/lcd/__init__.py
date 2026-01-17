@@ -1,4 +1,3 @@
-from pi_hardware.lcd.drivers import DisplayDriver, DualDisplay
 from pi_hardware.lcd.model import EyeStyle, EyeState, FaceState
 from pi_hardware.lcd.renderer import EyeRenderer
 from pi_hardware.lcd.animations import (
@@ -31,12 +30,9 @@ from pi_hardware.lcd.animations import (
     make_creative_timeline,
     make_noir_timeline,
 )
-from pi_hardware.lcd.player import EyePlayer
 from pi_hardware.lcd.utils import clamp, lerp, ease_in_out, ease_in, ease_out, now_s
 
 __all__ = [
-    "DisplayDriver",
-    "DualDisplay",
     "EyeStyle",
     "EyeState",
     "FaceState",
@@ -69,7 +65,6 @@ __all__ = [
     "make_tech_timeline",
     "make_creative_timeline",
     "make_noir_timeline",
-    "EyePlayer",
     "clamp",
     "lerp",
     "ease_in_out",

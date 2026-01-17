@@ -216,6 +216,7 @@ class RestApiService(Service):
             if mode < 1 or mode > 6:
                 return {"ok": False, "error": "mode must be 1-6"}
             EyeStateStore.set_mode(mode)
+            _post_pi("eyes_mode", {"mode": mode})
             return {"ok": True, "mode": mode}
 
         def eyes_custom(payload):
@@ -225,11 +226,8 @@ class RestApiService(Service):
             left, right = decoded
             EyeStateStore.set_custom(left, right)
             EyeStateStore.set_mode(6)
+            _post_pi("eyes_custom", payload)
             return {"ok": True, "mode": 6}
-
-        def eyes_clear(payload):
-            EyeStateStore.clear_custom()
-            return {"ok": True}
 
         def eyes_state(payload):
             mode, custom, _ = EyeStateStore.snapshot()
@@ -294,7 +292,6 @@ class RestApiService(Service):
         if eye_state:
             self.register("eyes_mode", eyes_mode)
             self.register("eyes_custom", eyes_custom)
-            self.register("eyes_clear", eyes_clear)
             self.register("eyes_state", eyes_state)
         self.register("post_text_message", post_text_message)
         self.register("post_mp3", post_mp3)

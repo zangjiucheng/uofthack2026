@@ -10,6 +10,7 @@ from states.robot_fsm import (
     run_state_handler,
 )
 from apps.services.pi import PiStateWSService, CamStreamingService, PiDebugDisplayService
+from apps.services.pi.eye_render_service import EyeRenderService
 from apps.services.pi.pi_rest_api_service import PiRestApiService
 from pi_hardware.cmd_handler import make_cmd_handler
 
@@ -54,10 +55,11 @@ class PiRobotService(Service):
         self.state_ws_service = PiStateWSService(raspi_state=self.raspi_state)
         self.cam_stream_service = CamStreamingService()
         self.debug_display_service = PiDebugDisplayService(raspi_state=self.raspi_state)
+        self.eye_render_service = EyeRenderService(self.raspi_state, bot=self.robot)
         self._last_unimplemented_state: PiRobotState | None = None
         self._last_status_ts: float = 0.0
         self._stopped = False
-        self.pi_rest_service = PiRestApiService(self.raspi_state.task_manager)
+        self.pi_rest_service = PiRestApiService(self.raspi_state.task_manager, eye_render_service=self.eye_render_service)
         self._tracer = None
 
     def start(self) -> None:  # pragma: no cover - interactive/long-running
@@ -66,6 +68,7 @@ class PiRobotService(Service):
         self._maybe_start_state_ws()
         self.pi_rest_service.start()
         self.debug_display_service.start()
+        self.eye_render_service.start()
         self._status_payload()
 
         try:
@@ -90,6 +93,7 @@ class PiRobotService(Service):
         if self.cam_stream_service:
             self.cam_stream_service.stop()
         self.debug_display_service.stop()
+        self.eye_render_service.stop()
         self._stop_tracer()
 
     def _maybe_start_streaming(self):

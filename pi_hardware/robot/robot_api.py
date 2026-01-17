@@ -16,6 +16,7 @@ import busio
 import adafruit_vl53l0x
 import adafruit_ssd1306
 from PIL import Image, ImageDraw, ImageFont
+from typing import Optional
 
 
 class SerialConnection:
@@ -157,6 +158,25 @@ class Eye:
         status = "OK" if self.display else "ERROR"
         return f"Eye(0x{self.address:02x}, {status})"
 
+    def update_from_surface(self, surface) -> bool:
+        """
+        Copy pixels from a pygame Surface (or surface-like object with get_width/get_at)
+        into the OLED display. Treat any non-dark pixel as on.
+        """
+        if self.display is None or surface is None:
+            return False
+        try:
+            width, height = surface.get_width(), surface.get_height()
+            for y in range(height):
+                for x in range(width):
+                    color = surface.get_at((x, y))
+                    on = (color.r > 32) or (color.g > 32) or (color.b > 32)
+                    self.display.pixel(x, y, 1 if on else 0)
+            self.display.show()
+            return True
+        except Exception:
+            return False
+
 
 class Eyes:
     """Dual eye displays"""
@@ -168,6 +188,14 @@ class Eyes:
     def __repr__(self) -> str:
         """Display eyes status"""
         return f"Eyes(left={self.left.display is not None}, right={self.right.display is not None})"
+
+    def update_from_surfaces(self, left_surface, right_surface) -> tuple[bool, bool]:
+        """
+        Update both displays from pygame surfaces. Returns (left_ok, right_ok).
+        """
+        left_ok = self.left.update_from_surface(left_surface) if left_surface is not None else False
+        right_ok = self.right.update_from_surface(right_surface) if right_surface is not None else False
+        return left_ok, right_ok
 
 
 class Head:
@@ -364,6 +392,22 @@ if __name__ == "__main__":
     # Example usage
     try:
         bot = Bot()
+
+        # import pygame
+        # import time
+        # pygame.init()
+        # left_surf = pygame.Surface((128, 64))
+        # right_surf = pygame.Surface((128, 64))
+        # left_surf.fill((0, 0, 0))
+        # right_surf.fill((0, 0, 0))
+        # pygame.draw.circle(left_surf, (255, 0, 0), (64, 32), 30)
+        # pygame.draw.circle(right_surf, (0, 0, 255), (64, 32), 30)
+        # ok_left, ok_right = bot.eyes.update_from_surfaces(left_surf, right_surf)
+        # print(ok_left, ok_right)
+
+        # time.sleep(10)
+
+        # pygame.quit()
         
         print("=== Robot Control API Test ===")
         print(f"Battery: {bot.battery.voltage:.2f}V ({bot.battery.cells} cells)")
