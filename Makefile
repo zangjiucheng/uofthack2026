@@ -8,6 +8,7 @@ APP_STREAM_SHOW        ?= 0                     # 1 to open a preview window (fo
 APP_CAM_INDEX          ?= 0                     # camera index when STREAM_SOURCE=cap (Debug: cap stream source only)
 APP_STREAM_RESIZE      ?= 0.8                   # Resize factor for input stream (Debug: cap stream source only)
 APP_STREAM_URL         ?= http://100.124.216.108:8000 # MJPEG stream URL when STREAM_SOURCE=cap
+APP_STREAM_DISCOVER    ?= 0                     # Enable auto-discovery of stream source (pi mode only)
 APP_VIDEO_JPEG_QUALITY ?= 70                    # JPEG quality for video stream
 APP_DETIC_INTERVAL     ?= 4                     # Interval between Detic detections
 APP_TRACK_MIN_INTERVAL ?= 0.1                   # Min interval between track detections
@@ -42,8 +43,12 @@ PI_PUB_WS_INTERVAL     ?= 0.3                   # Pi state WS publish interval
 PI_SUB_STATE_WS_HOST   ?= 100.105.226.99              # Backend state WS host
 PI_SUB_STATE_WS_PORT   ?= 8765                  # Backend state WS port
 PI_SUB_STATE_WS_MAX_SIZE ?= 2097152             # Max message size for PI state WS (2 MB)
-PI_DRIVE_LINEAR        ?= 0.8                   # Linear speed multiplier
-PI_DRIVE_ANGULAR       ?= 0.6                   # Angular speed multiplier
+PI_DRIVE_LINEAR        ?= 1.8                   # Linear speed multiplier
+PI_DRIVE_ANGULAR       ?= 1.0                   # Angular speed multiplier
+PI_HEAD_YAW_MIN       ?= -60
+PI_HEAD_YAW_MAX       ?= 60
+PI_HEAD_PITCH_MIN     ?= -30
+PI_HEAD_PITCH_MAX     ?= 45
 PI_REST                ?= 1                     # Enable PI REST server
 PI_REST_HOST           ?= 0.0.0.0               # PI REST server host
 PI_REST_PORT           ?= 8081                  # PI REST server port
@@ -98,6 +103,7 @@ run-backend:
 	APP_STREAM_SHOW=$(APP_STREAM_SHOW) \
 	APP_STREAM_CAM_INDEX=$(APP_CAM_INDEX) \
 	APP_STREAM_URL=$(APP_STREAM_URL) \
+	APP_STREAM_DISCOVER=$(APP_STREAM_DISCOVER) \
 	APP_STREAM_RESIZE=$(APP_STREAM_RESIZE) \
 	APP_STREAM_MAX_FPS=$(APP_STREAM_MAX_FPS) \
 	APP_VIDEO_JPEG_QUALITY=$(APP_VIDEO_JPEG_QUALITY) \
@@ -133,6 +139,10 @@ run-raspi:
 	PI_DEBUG_LOCAL=$(PI_DEBUG_LOCAL) \
 	PI_DRIVE_LINEAR=$(PI_DRIVE_LINEAR) \
 	PI_DRIVE_ANGULAR=$(PI_DRIVE_ANGULAR) \
+	PI_HEAD_YAW_MIN=$(PI_HEAD_YAW_MIN) \
+	PI_HEAD_YAW_MAX=$(PI_HEAD_YAW_MAX) \
+	PI_HEAD_PITCH_MIN=$(PI_HEAD_PITCH_MIN) \
+	PI_HEAD_PITCH_MAX=$(PI_HEAD_PITCH_MAX) \
 	PI_REST=$(PI_REST) \
 	PI_REST_HOST=$(PI_REST_HOST) \
 	PI_REST_PORT=$(PI_REST_PORT) \

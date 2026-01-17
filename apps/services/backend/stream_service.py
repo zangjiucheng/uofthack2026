@@ -387,7 +387,14 @@ class StreamService(Service):
             retry_threshold = 10
             last_log = 0.0
             last_discover = 0.0
-            discover_hosts = ["127.0.0.1", "localhost", "192.168.0.10", "192.168.1.10"]
+            discover_hosts_env = os.environ.get("APP_STREAM_DISCOVER_HOSTS", "")
+            if os.environ.get("APP_STREAM_DISCOVER", "0") == "1":
+                if discover_hosts_env:
+                    discover_hosts = [h.strip() for h in discover_hosts_env.split(",") if h.strip()]
+                else:
+                    discover_hosts = ["127.0.0.1", "localhost", "192.168.0.10", "192.168.1.10"]
+            else:
+                discover_hosts = []
             base_path = os.environ.get("APP_STREAM_PATH", "/stream.mjpg")
 
             def get_frame_url():
@@ -399,7 +406,6 @@ class StreamService(Service):
                 fail_count += 1
                 now = time.time()
                 if now - last_discover >= 1.0:
-                    last_discover = now
                     for host in discover_hosts:
                         candidate = f"http://{host}:9000{base_path}"
                         test = cv2.VideoCapture(candidate)

@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Callable
 import math
 import time
+import os
 
 from states.robot_fsm import PiRobotState
 from states.raspi_states import RaspiStateStore
@@ -144,12 +145,35 @@ def make_cmd_handler(
                 pass
             return _resp(True, rps={"left": motor_state["left"], "right": motor_state["right"]})
         if cmd == "set_head":
-            yaw = float(payload.get("yaw", 0.0))
-            pitch = float(payload.get("pitch", 0.0))
             try:
-                robot.head.yaw = yaw
-                robot.head.pitch = pitch
-                return _resp(True, head={"yaw": yaw, "pitch": pitch})
+                dyaw = payload.get("dyaw")
+                dpitch = payload.get("dpitch")
+
+                dyaw = float(dyaw) if dyaw is not None else None
+                dpitch = float(dpitch) if dpitch is not None else None
+            except Exception:
+                return {"ok": False, "error": "invalid yaw/pitch/dyaw/dpitch"}
+
+            current_yaw = float(getattr(getattr(robot, "head", None), "yaw", 0.0))
+            current_pitch = float(getattr(getattr(robot, "head", None), "pitch", 0.0))
+
+            yaw_target = current_yaw + (dyaw or 0.0)
+            pitch_target = current_pitch + (dpitch or 0.0)
+
+            yaw_min = float(os.environ.get("PI_HEAD_YAW_MIN", "-60"))
+            yaw_max = float(os.environ.get("PI_HEAD_YAW_MAX", "60"))
+            pitch_min = float(os.environ.get("PI_HEAD_PITCH_MIN", "-30"))
+            pitch_max = float(os.environ.get("PI_HEAD_PITCH_MAX", "45"))
+
+            yaw_target = max(yaw_min, min(yaw_max, yaw_target))
+            pitch_target = max(pitch_min, min(pitch_max, pitch_target))
+
+            print(f"[pi_robot] set_head: yaw={yaw_target:.1f}, pitch={pitch_target:.1f}")
+
+            try:
+                robot.head.yaw = yaw_target
+                robot.head.pitch = pitch_target
+                return _resp(True, head={"yaw": yaw_target, "pitch": pitch_target})
             except Exception as exc:
                 return {"ok": False, "error": str(exc)}
         if cmd in {"visual_state", "visual"}:

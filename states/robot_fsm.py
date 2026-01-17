@@ -113,8 +113,11 @@ def handle_manual(cmd_handler):
     try:
         lx = float(sticks.get("LX", 0))
         ly = float(sticks.get("LY", 0))
+        rx = float(sticks.get("RX", 0))
+        ry = float(sticks.get("RY", 0))
     except Exception:
-        lx = ly = 0.0
+        lx = ly = rx = ry = 0.0
+    buttons = ctrl.get("buttons", {}) if isinstance(ctrl, dict) else {}
 
     # Convert -127..127 stick values to [-1, 1] with a small deadzone.
     def normalize_axis(v: float, deadzone: float = 6.0) -> float:
@@ -125,6 +128,8 @@ def handle_manual(cmd_handler):
 
     throttle = -normalize_axis(ly)  # LY up should drive forward
     turn = normalize_axis(lx)       # LX left/right for turning
+    head_yaw = normalize_axis(rx) * 6.0    # RX for head yaw control
+    head_pitch = -normalize_axis(ry) * 3.0  # RY for head pitch control
 
     # Scale to motor commands (tune as needed)
     linear_gain = float(os.environ.get("PI_DRIVE_LINEAR", "0.8"))
@@ -132,12 +137,20 @@ def handle_manual(cmd_handler):
     v_cmd = throttle * linear_gain
     w_cmd = turn * angular_gain
 
-    # Use robot drive if available
-    try:
-        cmd_handler({"cmd": "cmd_vel", "v": v_cmd, "w": w_cmd})
-        raspi_state.set_movement(speed=float(v_cmd), turn=float(w_cmd))
-    except Exception:
-        pass
+    # Use robot drive via L1
+    if buttons.get("L1"):
+        try:
+            cmd_handler({"cmd": "cmd_vel", "v": v_cmd, "w": w_cmd})
+            raspi_state.set_movement(speed=float(v_cmd), turn=float(w_cmd))
+        except Exception:
+            pass
+
+    # Head control via R1
+    if buttons.get("R1"):
+        try:
+            cmd_handler({"cmd": "set_head", "dyaw": head_yaw, "dpitch": head_pitch})
+        except Exception:
+            pass
 
 
 def handle_error(cmd_handler):
