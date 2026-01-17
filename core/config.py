@@ -7,7 +7,7 @@ import os
 class AppConfig:
     """
     Shared config: knows repo root, image dir, and platform role.
-    APP_PLATFORM: "host" (laptop backend) or "pi" (Raspberry Pi pipeline).
+    APP_PLATFORM: "host" (laptop backend) or "pi" (Raspberry Pi pipeline) or "mcp" (MCP controller)
     """
 
     root: Path
@@ -22,3 +22,6 @@ class AppConfig:
 
     def is_pi(self) -> bool:
         return self.platform == "pi"
+
+    def is_mcp(self) -> bool:
+        return self.platform == "mcp"

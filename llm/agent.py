@@ -1,8 +1,3 @@
-"""
-LLM agent wrapper with pluggable providers.
-Supports: Ollama, Gemini, ChatGPT (OpenAI), Deepseek, and a stub fallback.
-Configure with env vars: LLM_PROVIDER, *_API_KEY, *_MODEL, *_BASE_URL.
-"""
 from dataclasses import dataclass
 import json
 import os
@@ -58,8 +53,8 @@ def _post_json(url: str, payload: Dict[str, Any], headers: Dict[str, str], timeo
 
 class OllamaClient:
     def __init__(self, model: str | None = None, base_url: str | None = None):
-        self.model = model or os.environ.get("OLLAMA_MODEL", "llama3")
-        self.base_url = (base_url or os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")).rstrip("/")
+        self.model = (model or os.environ.get("OLLAMA_MODEL") or "llama3").strip()
+        self.base_url = (base_url or os.environ.get("OLLAMA_BASE_URL") or "http://127.0.0.1:11434").rstrip("/")
 
     def complete(self, prompt: str, *, system_prompt: str | None = None, temperature: float | None = None) -> str:
         messages = []
@@ -90,11 +85,15 @@ class OpenAIChatClient:
     """
 
     def __init__(self, api_key: str | None = None, model: str | None = None, base_url: str | None = None):
-        self.api_key = api_key or os.environ.get("OPENAI_API_KEY")
+        self.api_key = api_key or os.environ.get("APP_OPENAI_API_KEY") or os.environ.get("OPENAI_API_KEY")
         if not self.api_key:
             raise LLMError("OPENAI_API_KEY is required for provider=openai/chatgpt")
-        self.model = model or os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
-        self.base_url = (base_url or os.environ.get("OPENAI_BASE_URL", "https://api.openai.com")).rstrip("/")
+        self.model = model or os.environ.get("APP_OPENAI_MODEL") or os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+        self.base_url = (
+            base_url
+            or os.environ.get("APP_OPENAI_BASE_URL")
+            or os.environ.get("OPENAI_BASE_URL", "https://api.openai.com")
+        ).rstrip("/")
 
     def complete(self, prompt: str, *, system_prompt: str | None = None, temperature: float | None = None) -> str:
         messages = []
@@ -154,26 +153,37 @@ class DeepSeekClient:
 
 class GeminiClient:
     def __init__(self, api_key: str | None = None, model: str | None = None, base_url: str | None = None):
-        self.api_key = api_key or os.environ.get("GEMINI_API_KEY")
+        self.api_key = api_key or os.environ.get("APP_GEMINI_API_KEY")
         if not self.api_key:
             raise LLMError("GEMINI_API_KEY is required for provider=gemini")
-        self.model = model or os.environ.get("GEMINI_MODEL", "gemini-pro")
-        self.base_url = (base_url or os.environ.get("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta")).rstrip("/")
+        self.model = model or os.environ.get("APP_GEMINI_MODEL", "gemini-2.5-flash")
+        self.base_url = (base_url or os.environ.get("APP_GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1")).rstrip("/")
+        self.max_output_tokens = int(os.environ.get("APP_GEMINI_MAX_OUTPUT_TOKENS", "4096"))
 
     def complete(self, prompt: str, *, system_prompt: str | None = None, temperature: float | None = None) -> str:
         url = f"{self.base_url}/models/{self.model}:generateContent?key={self.api_key}"
-        payload: Dict[str, Any] = {
-            "contents": [{"parts": [{"text": prompt}]}],
-        }
+        contents_text = prompt
         if system_prompt:
-            payload["system_instruction"] = {"parts": [{"text": system_prompt}]}
+            contents_text = f"SYSTEM:\n{system_prompt}\n\nUSER:\n{prompt}"
+
+        payload: Dict[str, Any] = {
+            "contents": [{"parts": [{"text": contents_text}]}],
+        }
+
+        gen_cfg: Dict[str, Any] = {"maxOutputTokens": self.max_output_tokens}
         if temperature is not None:
-            payload["generationConfig"] = {"temperature": temperature}
+            gen_cfg["temperature"] = temperature
+        payload["generationConfig"] = gen_cfg
 
         data = _post_json(url, payload, headers={"Content-Type": "application/json"})
+
         try:
-            parts = data["candidates"][0]["content"]["parts"]
-            return str(parts[0]["text"]).strip()
+            parts = data["candidates"][0]["content"].get("parts", [])
+            texts = [p.get("text", "") for p in parts if isinstance(p, dict)]
+            out = "".join(texts).strip()
+            if not out:
+                raise KeyError("Empty text output")
+            return out
         except Exception as exc:
             raise LLMError(f"Unexpected Gemini response: {data}") from exc
 
@@ -191,7 +201,8 @@ class StubClient:
 
 class Agent:
     def __init__(self, provider: str | None = None):
-        self.provider_name = (provider or os.environ.get("LLM_PROVIDER", "stub")).lower()
+        # Prefer APP_LLM_PROVIDER if present (MCP uses APP_*); fall back to LLM_PROVIDER
+        self.provider_name = (provider or os.environ.get("APP_LLM_PROVIDER") or os.environ.get("LLM_PROVIDER", "stub")).lower()
         self.client = self._build_client(self.provider_name)
 
     def _build_client(self, provider: str) -> LLMClient:
