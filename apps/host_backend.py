@@ -12,7 +12,14 @@ from states.event_states import EventState
 from states.raspi_states import RaspiStateStore
 from states.controller_state import ControllerStateStore
 from states.visual_state_service import VisualStateService
-from apps.services.backend import BackendTeleopService, PS2ListenerService, RestApiService, StreamService, WebsocketService
+from apps.services.backend import (
+    BackendTeleopService,
+    PS2ListenerService,
+    RestApiService,
+    StreamService,
+    WebsocketService,
+    EyeStreamService,
+)
 
 DEBUG_TRACE = os.environ.get("APP_DEBUG_TRACE", "0") == "1"
 try:
@@ -40,11 +47,12 @@ class HostBackendService(Service):
 
         self.stream_service = StreamService(self.event_state, stop_event=self._stop)
         self.websocket_service = WebsocketService(self.event_state, self.controller_state, self.raspi_state)
+        self.eye_stream_service = EyeStreamService()
         self.ps2_service = PS2ListenerService(self.event_state, self.controller_state)
         self.teleop_service = BackendTeleopService(self.controller_state, self.event_state)
         self.rest_service = RestApiService()
         self.visual_service = VisualStateService()
-        self.rest_service.register_host_handlers(self.stream_service, self.event_state)
+        self.rest_service.register_host_handlers(self.stream_service, self.event_state, eye_state=True)
 
     def start(self) -> None:
         # Run in a worker thread so Service.start returns immediately if desired.
@@ -68,11 +76,13 @@ class HostBackendService(Service):
         self.teleop_service.stop()
         self.rest_service.stop()
         self.websocket_service.stop()
+        self.eye_stream_service.stop()
         self.threads.join("host_main", timeout=1.0)
         self._stop_tracer()
 
     def _run(self):  # pragma: no cover - interactive path
         self.websocket_service.start()
+        self.eye_stream_service.start()
         self.ps2_service.start()
         self.teleop_service.start()
         self.rest_service.start()

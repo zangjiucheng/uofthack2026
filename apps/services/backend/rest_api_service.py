@@ -6,6 +6,8 @@ import urllib.error
 
 from core.services import Service
 from routes.rest_api import start_rest_server, CommandRegistry
+from states.eye_state import EyeStateStore
+from .eye_stream_service import EyeStreamService
 from states.visual_states import VisualStateStore, TrackState
 
 
@@ -23,7 +25,7 @@ class RestApiService(Service):
     def register(self, name: str, handler):
         self._registry.register(name, handler)
 
-    def register_host_handlers(self, stream_service, event_state):
+    def register_host_handlers(self, stream_service, event_state, eye_state: bool = False):
         pi_rest_url = os.environ.get("APP_PI_REST_URL", "").rstrip("/")
 
         def _post_pi(path: str, payload: dict):
@@ -197,6 +199,33 @@ class RestApiService(Service):
 
             return {"ok": True, "detections": labels, "ts": getattr(detic_state, "ts", None)}
 
+        def eyes_mode(payload):
+            try:
+                mode = int(payload.get("mode"))
+            except Exception:
+                return {"ok": False, "error": "mode must be int"}
+            if mode < 1 or mode > 6:
+                return {"ok": False, "error": "mode must be 1-6"}
+            EyeStateStore.set_mode(mode)
+            return {"ok": True, "mode": mode}
+
+        def eyes_custom(payload):
+            decoded = EyeStreamService.decode_custom_image(payload)
+            if decoded is None:
+                return {"ok": False, "error": "invalid image payload"}
+            left, right = decoded
+            EyeStateStore.set_custom(left, right)
+            EyeStateStore.set_mode(6)
+            return {"ok": True, "mode": 6}
+
+        def eyes_clear(payload):
+            EyeStateStore.clear_custom()
+            return {"ok": True}
+
+        def eyes_state(payload):
+            mode, custom, _ = EyeStateStore.snapshot()
+            return {"ok": True, "mode": mode, "has_custom": custom is not None}
+
         self.register("start_face_record", start_face_record)
         self.register("approach_object", approach_object)
         self.register("approach_person", approach_person)
@@ -211,6 +240,11 @@ class RestApiService(Service):
         self.register("update_detic_objects", update_detic_objects)
         self.register("trigger_detic", trigger_detic)
         self.register("list_detics", list_detics)
+        if eye_state:
+            self.register("eyes_mode", eyes_mode)
+            self.register("eyes_custom", eyes_custom)
+            self.register("eyes_clear", eyes_clear)
+            self.register("eyes_state", eyes_state)
 
     def start(self):
         if self._server is not None:

@@ -93,10 +93,9 @@ if __name__ == "__main__":
     SELECTIONS: Dict[str, Dict[str, Any]] = {
         "1": {"label": "Clean — ellipse", "kind": "timeline", "factory": make_minimal_timeline, "style_fn": no_style},
         "2": {"label": "Playful — far angle star", "kind": "timeline", "factory": make_playful_timeline, "style_fn": playful_style},
-        "3": {"label": "In love — heart", "kind": "timeline", "factory": lambda: make_heart_zoom_timeline(min_scale=0.9, max_scale=1.35), "style_fn": no_style},
+        "3": {"label": "In love — heart", "kind": "timeline", "factory": make_heart_zoom_timeline, "style_fn": no_style},
         "4": {"label": "Tech — round rectangle", "kind": "timeline", "factory": make_tech_timeline, "style_fn": tech_style},
         "5": {"label": "Noir — slit gaze, slow scan", "kind": "timeline", "factory": make_noir_timeline, "style_fn": no_style},
-        "6": {"label": "Custom — draw your own", "kind": "custom", "factory": None, "style_fn": no_style},
     }
 
     def prompt_choice() -> Dict[str, Any]:
@@ -104,7 +103,7 @@ if __name__ == "__main__":
         for key, spec in SELECTIONS.items():
             print(f"  {key}) {spec['label']}")
         while True:
-            choice = input("Enter choice (1,2,3,4,5,6): ").strip()
+            choice = input("Enter choice (1,2,3,4,5): ").strip()
             if choice in SELECTIONS:
                 return SELECTIONS[choice]
             print("Invalid choice. Try again.")
