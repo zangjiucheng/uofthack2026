@@ -3,8 +3,6 @@ from __future__ import annotations
 import time
 from typing import Any, Dict, Optional
 
-from ..planner.mcp_tools import DEFAULT_PLANNER_TOOLS
-
 
 def register_routes(
     registry,
@@ -113,10 +111,7 @@ def register_routes(
             return {"ok": False, "error": "planner client not configured"}
         transcript = (payload or {}).get("transcript", "")
         context = (payload or {}).get("context") or {}
-        tools = (payload or {}).get("tools")
-        if tools is None:
-            tools = DEFAULT_PLANNER_TOOLS
-        resp = planner_client.plan(transcript=transcript, context=context, tools=tools)
+        resp = planner_client.plan(transcript=transcript, context=context)
         _log("rest_planner_plan", ok=bool(resp.get("ok")))
         return resp
 
@@ -136,11 +131,8 @@ def register_routes(
             return {"ok": False, "error": "no STT transcript available", "stt": snap}
 
         context = (payload or {}).get("context") or {}
-        tools = (payload or {}).get("tools")
-        if tools is None:
-            tools = DEFAULT_PLANNER_TOOLS
 
-        resp = planner_client.plan(transcript=final_text, context=context, tools=tools)
+        resp = planner_client.plan(transcript=final_text, context=context)
         _log("rest_planner_plan_from_stt", ok=bool(resp.get("ok")), transcript=final_text)
         return resp
 
@@ -182,11 +174,7 @@ def register_routes(
         except Exception:
             pass
 
-        tools = (payload or {}).get("tools")
-        if tools is None:
-            tools = DEFAULT_PLANNER_TOOLS
-
-        resp = mcp_service.plan_and_execute(transcript=text, context=context, tools=tools)
+        resp = mcp_service.plan_and_execute(transcript=text, context=context)
         _log("rest_mcp_run", ok=bool(resp.get("ok")), transcript=text)
         return resp
 

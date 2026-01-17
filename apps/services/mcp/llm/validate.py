@@ -8,6 +8,22 @@ VALID_GOALS = {"FIND_OBJECT", "FIND_PERSON", "ENROLL_PERSON"}
 VALID_ON_FAIL = {"stop", "continue"}
 
 
+def _extract_action(plan: Dict[str, Any]) -> Tuple[str | None, Any]:
+    tool = plan.get("tool")
+    payload = plan.get("payload")
+
+    action = plan.get("action")
+    if isinstance(action, dict):
+        tool = action.get("tool") or action.get("name") or tool
+        payload = action.get("payload") if action.get("payload") is not None else action.get("args", payload)
+
+    return tool, payload
+
+
+def _non_empty_str(val: Any) -> bool:
+    return isinstance(val, str) and bool(val.strip())
+
+
 def validate_plan(plan: Dict[str, Any], allowed_tools: Set[str]) -> Tuple[bool, str]:
     if not isinstance(plan, dict):
         return False, "plan must be an object"
@@ -18,9 +34,37 @@ def validate_plan(plan: Dict[str, Any], allowed_tools: Set[str]) -> Tuple[bool, 
     if plan.get("goal_type") not in VALID_GOALS:
         return False, "invalid or missing goal_type"
 
+    tool, payload = _extract_action(plan)
+    if tool:
+        if tool not in allowed_tools:
+            return False, f"tool '{tool}' not in allowed tools"
+        if payload is None:
+            plan["payload"] = {}
+            payload = {}
+        if not isinstance(payload, dict):
+            return False, "payload must be an object"
+
+        goal = plan.get("goal_type")
+        if tool == "start_face_record":
+            if goal != "ENROLL_PERSON":
+                return False, "start_face_record requires goal_type ENROLL_PERSON"
+            if not _non_empty_str(payload.get("name")):
+                return False, "payload.name required for start_face_record"
+        elif tool == "approach_person":
+            if goal != "FIND_PERSON":
+                return False, "approach_person requires goal_type FIND_PERSON"
+            if not _non_empty_str(payload.get("name")):
+                return False, "payload.name required for approach_person"
+        elif tool == "approach_object":
+            if goal != "FIND_OBJECT":
+                return False, "approach_object requires goal_type FIND_OBJECT"
+            if not _non_empty_str(payload.get("object")):
+                return False, "payload.object required for approach_object"
+        return True, ""
+
     steps = plan.get("steps")
     if not isinstance(steps, list) or len(steps) < 1:
-        return False, "steps must be a non-empty array"
+        return False, "plan must include a tool/payload or non-empty steps"
 
     ok, err = _validate_steps(steps, allowed_tools, path="steps")
     if not ok:
