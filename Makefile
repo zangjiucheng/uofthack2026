@@ -5,7 +5,7 @@ PYTHON ?= python
 APP_STREAM_SOURCE      ?= pi                    # cap | pi
 APP_CAM_INDEX          ?= 0                     # camera index when STREAM_SOURCE=cap (Debug: cap stream source only)
 APP_STREAM_RESIZE      ?= 0.8                   # Resize factor for input stream (Debug: cap stream source only)
-APP_STREAM_URL         ?= http://127.0.0.1:9000/stream.mjpg # MJPEG stream URL when STREAM_SOURCE=cap
+APP_STREAM_URL         ?= http://100.124.216.108:8000 # MJPEG stream URL when STREAM_SOURCE=cap
 APP_VIDEO_JPEG_QUALITY ?= 70                    # JPEG quality for video stream
 APP_DETIC_INTERVAL     ?= 4                     # Interval between Detic detections
 APP_TRACK_MIN_INTERVAL ?= 0.1                   # Min interval between track detections
@@ -16,8 +16,8 @@ APP_PUB_WS_HOST        ?= 0.0.0.0               # Backend state WS host
 APP_STATE_WS_PORT      ?= 8765                  # Backend state WS port
 APP_WS_INTERVAL        ?= 0.4                   # Backend state WS publish interval
 APP_PI_STATE_WS_PORT   ?= 8766                  # Pi state WS port
-APP_PI_STATE_HOST      ?= 127.0.0.1             # Pi state WS host
-APP_PI_REST_URL        ?= http://127.0.0.1:8081 # Pi REST server URL
+APP_PI_STATE_HOST      ?= 100.124.216.108             # Pi state WS host
+APP_PI_REST_URL        ?= http://100.124.216.108:8081 # Pi REST server URL
 APP_VIDEO_WS_PORT      ?= 8890                  # Video WebSocket port
 APP_PS2_LOG_EVENTS     ?= 0                     # Log PS2 controller events (event store)
 APP_PS2_BAUD           ?= 115200                # PS2 controller serial baud rate
@@ -31,13 +31,13 @@ APP_DEBUG_TRACE_OUT    ?= backend_threads.json          # Output file for debug 
 
 # Pi-side knobs
 # --- PI MODE ---
-PI_DEBUG_LOCAL         ?= 1                     # Enable local debug output (pygame window), use local camera simulation
+PI_DEBUG_LOCAL         ?= 0                     # Enable local debug output (pygame window), use local camera simulation
 PI_BASE_WIDTH          ?= 0.30
 PI_STATE_WS            ?= 1
 PI_PUB_STATE_WS_HOST   ?= 0.0.0.0               # Pi state WS host
 PI_PUB_STATE_WS_PORT   ?= 8766                  # Pi state WS port
 PI_PUB_WS_INTERVAL     ?= 0.3                   # Pi state WS publish interval
-PI_SUB_STATE_WS_HOST   ?= 127.0.0.1             # Backend state WS host
+PI_SUB_STATE_WS_HOST   ?= 100.110.140.48             # Backend state WS host
 PI_SUB_STATE_WS_PORT   ?= 8765                  # Backend state WS port
 PI_SUB_STATE_WS_MAX_SIZE ?= 2097152             # Max message size for PI state WS (2 MB)
 PI_DRIVE_LINEAR        ?= 0.8                   # Linear speed multiplier
@@ -49,7 +49,11 @@ PI_REST_PORT           ?= 8081                  # PI REST server port
 PI_DEBUG_TRACE        ?= 0                     # Enable backend viztrace logging
 PI_DEBUG_TRACE_OUT    ?= pi_threads.json          # Output file for debug trace
 
-.PHONY: run-backend run-raspi
+# Deploy/rsync
+RSYNC_DEST            ?= alex@100.124.216.108:~/uofthack2026
+RSYNC_FLAGS           ?= -av --delete --exclude='.git' --filter=':- .gitignore'
+
+.PHONY: run-frontend run-backend run-raspi rsync-remote install-frontend
 
 run-backend:
 	APP_MODE=backend \
@@ -99,6 +103,9 @@ run-raspi:
 	PI_DEBUG_TRACE=$(PI_DEBUG_TRACE) \
 	PI_DEBUG_TRACE_OUT=$(PI_DEBUG_TRACE_OUT) \
 	$(PYTHON) main.py
+
+rsync-remote:
+	rsync $(RSYNC_FLAGS) ./ $(RSYNC_DEST)/
 
 install-frontend:
 	git submodule update --init --recursive
