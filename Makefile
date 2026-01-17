@@ -39,7 +39,7 @@ PI_STATE_WS            ?= 1
 PI_PUB_STATE_WS_HOST   ?= 0.0.0.0               # Pi state WS host
 PI_PUB_STATE_WS_PORT   ?= 8766                  # Pi state WS port
 PI_PUB_WS_INTERVAL     ?= 0.3                   # Pi state WS publish interval
-PI_SUB_STATE_WS_HOST   ?= 100.110.140.48             # Backend state WS host
+PI_SUB_STATE_WS_HOST   ?= 100.105.226.99              # Backend state WS host
 PI_SUB_STATE_WS_PORT   ?= 8765                  # Backend state WS port
 PI_SUB_STATE_WS_MAX_SIZE ?= 2097152             # Max message size for PI state WS (2 MB)
 PI_DRIVE_LINEAR        ?= 0.8                   # Linear speed multiplier
@@ -56,7 +56,7 @@ RSYNC_DEST            ?= alex@100.124.216.108:~/uofthack2026
 RSYNC_FLAGS           ?= -av --delete --exclude='.git' --filter=':- .gitignore'
 
 # Frontend defaults (injected as Vite env)
-FE_HOST              ?= 100.110.140.48
+FE_HOST              ?= 100.105.226.99 
 FE_STATE_WS_PORT     ?= 8765
 FE_VIDEO_WS_PORT     ?= 8890
 FE_REST_PORT         ?= 8080

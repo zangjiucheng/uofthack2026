@@ -179,6 +179,8 @@ def handle_approach(cmd_handler):
         except Exception:
             pass
     if set_state:
+        cmd_handler({"cmd": "stop"})
+        cmd_handler({"cmd": "motors_control", "enable": False})
         set_state(PiRobotState.IDLE)
 
 
@@ -218,10 +220,6 @@ def _global_stop_guard(cmd_handler) -> bool:
     buttons = ctrl.get("buttons", {}) if isinstance(ctrl, dict) else {}
     # Global stop trigger
     if buttons.get("L2") or buttons.get("R2"):
-        try:
-            cmd_handler({"cmd": "stop"})
-        except Exception:
-            pass
         task_manager = getattr(raspi_state, "task_manager", None) if raspi_state else None
         if task_manager:
             try:
@@ -229,6 +227,11 @@ def _global_stop_guard(cmd_handler) -> bool:
             except Exception:
                 pass
         set_state(PiRobotState.INIT)
+        try:
+            cmd_handler({"cmd": "stop"})
+            cmd_handler({"cmd": "motors_control", "enable": False})
+        except Exception:
+            pass
         return True
     return False
 

@@ -123,6 +123,7 @@ def make_cmd_handler(
             return _resp(True)
         if cmd == "motors_control":
             motor_enable = bool(payload.get("enable", True))
+            print(f"[pi_robot] motors_control: enable={motor_enable}")
             _apply_wheel_speeds(0.0, 0.0, enable=motor_enable)
             try:
                 raspi_state.set_movement(speed=0.0, turn=0.0)
