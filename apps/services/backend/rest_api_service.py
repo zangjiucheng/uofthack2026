@@ -1,3 +1,4 @@
+import base64
 import os
 import time
 import json
@@ -27,6 +28,14 @@ class RestApiService(Service):
 
     def register_host_handlers(self, stream_service, event_state, eye_state: bool = False):
         pi_rest_url = os.environ.get("APP_PI_REST_URL", "").rstrip("/")
+
+        def _file_to_b64(path: str) -> tuple[bool, str | None, str | None]:
+            try:
+                with open(path, "rb") as f:
+                    data = f.read()
+                return True, base64.b64encode(data).decode("utf-8"), None
+            except Exception as exc:
+                return False, None, str(exc)
 
         def _post_pi(path: str, payload: dict):
             if not pi_rest_url:
@@ -226,6 +235,48 @@ class RestApiService(Service):
             mode, custom, _ = EyeStateStore.snapshot()
             return {"ok": True, "mode": mode, "has_custom": custom is not None}
 
+        def get_text_message(payload):
+            """
+            Return a plain text message for UI consumption.
+            Accepts { "text": "..." }.
+            """
+            text = str((payload or {}).get("text", "")).strip()
+            if not text:
+                return {"ok": False, "error": "text required"}
+            return {"ok": True, "text": text}
+
+        def get_mp3(payload):
+            """
+            Return MP3 audio as base64 for UI playback.
+            Accepts audio_b64 or audio_path (mp3 file).
+            """
+            audio_b64 = (payload or {}).get("audio_b64")
+            audio_path = (payload or {}).get("audio_path")
+            if not audio_b64 and audio_path:
+                ok, data, err = _file_to_b64(audio_path)
+                if not ok or not data:
+                    return {"ok": False, "error": f"failed to read mp3: {err}"}
+                audio_b64 = data
+            if not audio_b64:
+                return {"ok": False, "error": "audio_b64 or audio_path required"}
+            return {"ok": True, "content_type": "audio/mpeg", "audio_b64": str(audio_b64)}
+
+        def get_wav(payload):
+            """
+            Return WAV audio as base64 for UI playback.
+            Accepts audio_b64 or audio_path (wav file).
+            """
+            audio_b64 = (payload or {}).get("audio_b64")
+            audio_path = (payload or {}).get("audio_path")
+            if not audio_b64 and audio_path:
+                ok, data, err = _file_to_b64(audio_path)
+                if not ok or not data:
+                    return {"ok": False, "error": f"failed to read wav: {err}"}
+                audio_b64 = data
+            if not audio_b64:
+                return {"ok": False, "error": "audio_b64 or audio_path required"}
+            return {"ok": True, "content_type": "audio/wav", "audio_b64": str(audio_b64)}
+
         self.register("start_face_record", start_face_record)
         self.register("approach_object", approach_object)
         self.register("approach_person", approach_person)
@@ -245,6 +296,9 @@ class RestApiService(Service):
             self.register("eyes_custom", eyes_custom)
             self.register("eyes_clear", eyes_clear)
             self.register("eyes_state", eyes_state)
+        self.register("get_text_message", get_text_message)
+        self.register("get_mp3", get_mp3)
+        self.register("get_wav", get_wav)
 
     def start(self):
         if self._server is not None:
