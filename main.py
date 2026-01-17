@@ -4,11 +4,16 @@ from core.services import ServiceContext, ServiceRegistry
 
 
 def framework(mode: str) -> None:
-    cfg = AppConfig(platform=mode if mode in {"host", "pi"} else None)
+
+    cfg = AppConfig(platform=mode if mode in {"host", "pi", "mcp"} else None)
     ctx = ServiceContext(cfg)
     registry = ServiceRegistry()
 
-    if cfg.is_host():
+    if cfg.is_mcp():
+        from apps.host_mcp import HostMcpService
+        registry.register(HostMcpService.name, HostMcpService)
+        target = HostMcpService.name
+    elif cfg.is_host():
         from apps.host_backend import HostBackendService
         registry.register(HostBackendService.name, HostBackendService)
         target = HostBackendService.name
@@ -28,5 +33,7 @@ if __name__ == "__main__":
         framework("host")
     elif app_mode == "raspi":
         framework("pi")
+    elif app_mode == "mcp":
+        framework("mcp")
     else:
         print("Unknown APP_MODE. Use 'backend' or 'raspi'.")
