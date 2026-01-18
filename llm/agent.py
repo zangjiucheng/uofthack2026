@@ -158,7 +158,7 @@ class GeminiClient:
             raise LLMError("GEMINI_API_KEY is required for provider=gemini")
         self.model = model or os.environ.get("APP_GEMINI_MODEL", "gemini-2.5-flash")
         self.base_url = (base_url or os.environ.get("APP_GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1")).rstrip("/")
-        self.max_output_tokens = int(os.environ.get("APP_GEMINI_MAX_OUTPUT_TOKENS", "4096"))
+        self.max_output_tokens = int(os.environ.get("APP_GEMINI_MAX_OUTPUT_TOKENS", "1024"))
 
     def complete(self, prompt: str, *, system_prompt: str | None = None, temperature: float | None = None) -> str:
         url = f"{self.base_url}/models/{self.model}:generateContent?key={self.api_key}"

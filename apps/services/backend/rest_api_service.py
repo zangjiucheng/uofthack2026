@@ -38,8 +38,10 @@ class RestApiService(Service):
                 return False, None, str(exc)
 
         def _post_pi(path: str, payload: dict):
+            print(f"[rest_api] posting to pi at {pi_rest_url} with payload: {payload}")
             if not pi_rest_url:
                 return {"ok": False, "error": "APP_PI_REST_URL not set"}
+            print(f"[rest_api] pi_rest_url: {pi_rest_url}")
             url = f"{pi_rest_url}/{path.lstrip('/')}"
             data = json.dumps(payload or {}).encode("utf-8")
             req = urllib.request.Request(
@@ -48,6 +50,7 @@ class RestApiService(Service):
                 headers={"Content-Type": "application/json"},
                 method="POST",
             )
+            print(f"[rest_api] pi request URL: {url}, data: {data}")
             try:
                 with urllib.request.urlopen(req, timeout=2) as resp:
                     body = resp.read().decode("utf-8") or "{}"
@@ -57,6 +60,113 @@ class RestApiService(Service):
                 return json.loads(body)
             except Exception:
                 return {"ok": False, "error": "invalid response", "raw": body}
+
+        def _planner_base_url() -> str:
+            base = (os.environ.get("APP_PLANNER_URL") or "").strip().rstrip("/")
+            if base:
+                return base
+            host = (os.environ.get("APP_PLANNER_HOST") or "127.0.0.1").strip()
+            port = (os.environ.get("APP_PLANNER_PORT") or "8091").strip()
+            host_with_scheme = host if host.startswith(("http://", "https://")) else f"http://{host}"
+            return f"{host_with_scheme}:{port}".rstrip("/")
+
+        def _post_planner(payload: dict, meta: dict | None = None):
+            planner_base = _planner_base_url()
+            print(f"[rest_api] posting to planner at {planner_base} with payload: {payload}")
+            if not planner_base:
+                return {"ok": False, "error": "planner URL not configured"}
+            url = f"{planner_base}/plan"
+            data = json.dumps(payload or {}).encode("utf-8")
+            print(f"[rest_api] planner request URL: {url}, data: {data}")
+            token = (os.environ.get("APP_PLANNER_TOKEN") or "").strip()
+            headers = {"Content-Type": "application/json"}
+            if token:
+                headers["X-Planner-Token"] = token
+                print("[rest_api] using planner token for request")
+            req = urllib.request.Request(
+                url,
+                data=data,
+                headers=headers,
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    body = resp.read().decode(resp.headers.get_content_charset() or "utf-8") or "{}"
+            except Exception as exc: 
+                return {"ok": False, "error": f"planner request failed: {exc}", "planner_url": url, "input": meta or {}}
+            try:
+                print(f"[rest_api] planner raw response: {body}")
+                parsed = json.loads(body)
+                if isinstance(parsed, dict):
+                    parsed.setdefault("planner_url", url)
+                    if meta:
+                        parsed.setdefault("input", meta)
+                    print(f"[rest_api] planner response: {parsed}")
+                    return parsed
+                return {"ok": False, "error": "invalid planner response", "raw": parsed, "planner_url": url, "input": meta or {}}
+            except Exception:
+                return {"ok": False, "error": "invalid planner response", "raw": body, "planner_url": url, "input": meta or {}}
+
+        def _extract_tool_payload(plan: dict) -> tuple[str | None, dict]:
+            tool = None
+            payload: dict = {}
+            if not isinstance(plan, dict):
+                return tool, payload
+            tool = plan.get("tool")
+            payload = plan.get("payload") or {}
+            action = plan.get("action")
+            if isinstance(action, dict):
+                tool = action.get("tool") or action.get("name") or tool
+                if action.get("payload") is not None:
+                    payload = action.get("payload")
+                elif action.get("args") is not None:
+                    payload = action.get("args")
+            if not isinstance(payload, dict):
+                payload = {}
+            return tool, payload
+
+        def _execute_plan(plan: dict):
+            tool, payload = _extract_tool_payload(plan)
+            if not tool:
+                return {"ok": False, "error": "plan missing tool"}
+            print(f"[rest_api] executing tool '{tool}' with payload: {payload}")
+            result = self._registry.dispatch(tool, payload)
+            print(f"[rest_api] tool '{tool}' result: {result}")
+            return {"ok": True, "tool": tool, "payload": payload, "result": result}
+
+        def _handle_planner_response(resp: dict):
+            if not isinstance(resp, dict):
+                return {"ok": False, "error": "invalid planner response"}
+            if not resp.get("ok"):
+                print(f"[rest_api] planner returned error: {resp}")
+                return resp
+
+            mode = resp.get("mode")
+            print(f"[rest_api] planner mode: {mode}")
+            if mode == "chat":
+                print(f"[rest_api] chat reply: {resp.get('reply', '')}")
+                return {"ok": True, "mode": "chat", "reply": resp.get("reply", "")}
+
+            if mode == "plan":
+                plan = resp.get("plan")
+                if not isinstance(plan, dict):
+                    return {"ok": False, "error": "planner returned invalid plan"}
+                print(f"[rest_api] received plan: {plan}")
+                exec_resp = _execute_plan(plan)
+                print(f"[rest_api] plan execution response: {exec_resp}")
+                if not exec_resp.get("ok"):
+                    return exec_resp
+                return {
+                    "ok": True,
+                    "mode": "plan",
+                    "plan": plan,
+                    "tool": exec_resp.get("tool"),
+                    "payload": exec_resp.get("payload"),
+                    "result": exec_resp.get("result"),
+                    "message": "command executed",
+                }
+
+            return resp
 
         def start_face_record(payload):
             name = payload.get("name")
@@ -156,6 +266,7 @@ class RestApiService(Service):
 
         def approach_object(payload):
             obj = (payload or {}).get("object")
+            print(f"[rest_api] approach_object in backend called with payload: {payload}")
             if not obj or not isinstance(obj, str):
                 return {"ok": False, "error": "object (str) required"}
             return _post_pi("approach_object", {"object": obj})
@@ -235,17 +346,23 @@ class RestApiService(Service):
 
         def post_text_message(payload):
             """
-            Return a plain text message for UI consumption.
+            Send a text message to the MCP LLM planner.
             Accepts { "text": "..." }.
             """
             text = str((payload or {}).get("text", "")).strip()
             if not text:
                 return {"ok": False, "error": "text required"}
-            return {"ok": True, "text": text}
+            context = payload.get("context") if isinstance(payload, dict) else None
+            planner_payload = {"transcript": text}
+            print(f"[rest_api] posting text to planner: {text}")
+            if isinstance(context, dict):
+                planner_payload["context"] = context
+            resp = _post_planner(planner_payload, meta={"text": text, "source": "post_text_message"})
+            return _handle_planner_response(resp)
 
         def post_mp3(payload):
             """
-            Return MP3 audio as base64 for UI playback.
+            Send MP3 audio (base64 or file path) to the MCP LLM planner.
             Accepts audio_b64 or audio_path (mp3 file).
             """
             audio_b64 = (payload or {}).get("audio_b64")
@@ -257,11 +374,16 @@ class RestApiService(Service):
                 audio_b64 = data
             if not audio_b64:
                 return {"ok": False, "error": "audio_b64 or audio_path required"}
-            return {"ok": True, "content_type": "audio/mpeg", "audio_b64": str(audio_b64)}
+            context = payload.get("context") if isinstance(payload, dict) else None
+            planner_payload = {"audio_b64": str(audio_b64)}
+            if isinstance(context, dict):
+                planner_payload["context"] = context
+            resp = _post_planner(planner_payload, meta={"has_audio_b64": True, "format": "mp3", "source": "post_mp3"})
+            return _handle_planner_response(resp)
 
         def post_wav(payload):
             """
-            Return WAV audio as base64 for UI playback.
+            Send WAV audio (base64 or file path) to the MCP LLM planner.
             Accepts audio_b64 or audio_path (wav file).
             """
             audio_b64 = (payload or {}).get("audio_b64")
@@ -273,7 +395,13 @@ class RestApiService(Service):
                 audio_b64 = data
             if not audio_b64:
                 return {"ok": False, "error": "audio_b64 or audio_path required"}
-            return {"ok": True, "content_type": "audio/wav", "audio_b64": str(audio_b64)}
+            context = payload.get("context") if isinstance(payload, dict) else None
+            planner_payload = {"audio_b64": str(audio_b64)}
+            print(f"[rest_api] posting wav audio to planner")
+            if isinstance(context, dict):
+                planner_payload["context"] = context
+            resp = _post_planner(planner_payload, meta={"has_audio_b64": True, "format": "wav", "source": "post_wav"})
+            return _handle_planner_response(resp)
 
         self.register("start_face_record", start_face_record)
         self.register("approach_object", approach_object)

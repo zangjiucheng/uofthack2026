@@ -13,15 +13,7 @@ from apps.services.pi import PiStateWSService, CamStreamingService, PiDebugDispl
 from apps.services.pi.eye_render_service import EyeRenderService
 from apps.services.pi.pi_rest_api_service import PiRestApiService
 from pi_hardware.cmd_handler import make_cmd_handler
-
-# Prefer real hardware API but fall back to the fake implementation on platforms
-# where adafruit/board can't initialize (e.g., local dev on macOS).
-try:
-    from pi_hardware.robot.robot_api import Bot  # type: ignore
-except Exception as exc:  # pragma: no cover - platform guard
-    print(f"[pi_robot] real Bot unavailable ({exc}); using FakeBot")
-    from pi_hardware.robot.fake_robot_api import FakeBot as Bot  # type: ignore
-
+from pi_hardware.robot.robot_api import Bot
 
 DEBUG_TRACE = os.environ.get("PI_DEBUG_TRACE", "0") == "1"
 ROOT_DIR = pathlib.Path(os.getcwd()).resolve()

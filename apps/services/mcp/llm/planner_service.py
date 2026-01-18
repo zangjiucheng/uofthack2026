@@ -173,7 +173,6 @@ def _transcribe_from_payload(payload: Dict[str, Any]) -> Tuple[bool, str, str]:
 
 
 def start_planner_service(host: str = "0.0.0.0", port: int = 8091) -> HTTPServer:
-    token = (os.environ.get("PLANNER_TOKEN") or os.environ.get("APP_PLANNER_TOKEN") or "").strip()
     agent = Agent()  
     temperature = float(os.environ.get("PLANNER_TEMPERATURE", "0.0"))
 
@@ -201,10 +200,6 @@ def start_planner_service(host: str = "0.0.0.0", port: int = 8091) -> HTTPServer
             if self.path.rstrip("/") != "/plan":
                 return self._json(404, {"ok": False, "error": "not found"})
 
-            if token:
-                got = (self.headers.get("X-Planner-Token") or "").strip()
-                if got != token:
-                    return self._json(401, {"ok": False, "error": "unauthorized"})
 
             length = int(self.headers.get("Content-Length", "0"))
             body = self.rfile.read(length) if length > 0 else b"{}"

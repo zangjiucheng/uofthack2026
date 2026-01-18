@@ -59,7 +59,8 @@ def register_tool_handlers(registry) -> None:
     backend_post = _make_post("APP_BACKEND_REST_URL", timeout_s=2.0)
     pi_post = _make_post("APP_PI_REST_URL", timeout_s=2.0)
 
-    register_motion_tools(registry, pi_post=pi_post)
+    # Use backend REST for motion tools so planner-triggered tools hit the backend service.
+    register_motion_tools(registry, pi_post=backend_post)
 
     register_detic_tools(registry, backend_post=backend_post)
     register_face_tools(registry, backend_post=backend_post)
