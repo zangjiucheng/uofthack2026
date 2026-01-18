@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from typing import Callable
-import math
 import time
 import os
 
@@ -178,6 +177,10 @@ def make_cmd_handler(
             except Exception:
                 pass
             return _resp(True, rps={"left": motor_state["left"], "right": motor_state["right"]})
+        if cmd == "reset_head":
+            robot.head.yaw = 0.0
+            robot.head.pitch = 0.0
+            return _resp(True, head={"yaw": 0.0, "pitch": 0.0})
         if cmd == "set_head":
             result = _apply_head(payload)
             if isinstance(result, dict) and result.get("ok"):

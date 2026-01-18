@@ -92,7 +92,8 @@ APP_MCP_REST           	?= 1
 APP_MCP_REST_HOST   	?= 127.0.0.1
 APP_MCP_REST_PORT   	?= 8090
 
-APP_BACKEND_REST_URL 	?= http://127.0.0.1:8080
+APP_BACKEND_REST_URL 	?= http://100.105.226.99:8080
+
 
 run-backend:
 	APP_MODE=backend \

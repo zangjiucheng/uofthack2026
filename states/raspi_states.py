@@ -226,6 +226,68 @@ class RaspiStateStore:
         with self._lock:
             return dict(self._state.controller)
 
+    def find_detic_detection(self, label: str) -> Dict[str, Any] | None:
+        """
+        Return the highest-score detic detection matching the given label (case-insensitive).
+        Looks in visual['detic']['detections'] which is expected to be a list of dicts.
+        """
+        if not label:
+            return None
+        target = str(label).lower()
+        best = None
+        best_score = float("-inf")
+        with self._lock:
+            detic = {}
+            try:
+                detic = self._state.visual.get("detic", {})
+            except Exception:
+                detic = {}
+            detections = detic.get("detections") if isinstance(detic, dict) else None
+            if not isinstance(detections, list):
+                return None
+            for det in detections:
+                if not isinstance(det, dict):
+                    continue
+                lbl = str(det.get("label", "")).lower()
+                if lbl != target:
+                    continue
+                score = float(det.get("score", 0.0)) if det.get("score") is not None else 0.0
+                if score > best_score:
+                    best_score = score
+                    best = det
+        return best
+
+    def find_face_detection(self, label: str) -> Dict[str, Any] | None:
+        """
+        Return the highest-similarity face detection matching the given label (case-insensitive).
+        Looks in visual['face']['faces'] which is expected to be a list of dicts.
+        """
+        if not label:
+            return None
+        target = str(label).lower()
+        best = None
+        best_sim = float("-inf")
+        with self._lock:
+            face_block = {}
+            try:
+                face_block = self._state.visual.get("face", {})
+            except Exception:
+                face_block = {}
+            faces = face_block.get("faces") if isinstance(face_block, dict) else None
+            if not isinstance(faces, list):
+                return None
+            for det in faces:
+                if not isinstance(det, dict):
+                    continue
+                lbl = str(det.get("label", "")).lower()
+                if lbl != target:
+                    continue
+                sim = float(det.get("sim", 0.0)) if det.get("sim") is not None else 0.0
+                if sim > best_sim:
+                    best_sim = sim
+                    best = det
+        return best
+
     def load_snapshot(self, snapshot: Dict[str, Any]) -> None:
         """
         Overwrite current raspi state from an external snapshot dict (e.g., WS).

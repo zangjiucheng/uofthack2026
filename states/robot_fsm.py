@@ -1,5 +1,8 @@
 from enum import Enum
 import os
+import time
+import json
+import urllib.request
 
 class PiRobotState(str, Enum):
     INIT = "INIT"
@@ -12,6 +15,7 @@ class PiRobotState(str, Enum):
     TRACKING = "TRACKING"
     APPROACH = "APPROACH"
     DISCOVER = "DISCOVER"
+    APPROACHSTOP = "APPROACHSTOP"
 
 
 ALLOWED_STATES = {state.value for state in PiRobotState}
@@ -30,6 +34,7 @@ def to_label(state: PiRobotState | str) -> str:
         PiRobotState.TRACKING: "Tracking Target",
         PiRobotState.APPROACH: "Approaching Target",
         PiRobotState.DISCOVER: "Discovering Environment",
+        PiRobotState.APPROACHSTOP: "Approach Stopped",
     }
     return labels.get(state_enum, str(state_enum or state))
 
@@ -106,6 +111,7 @@ def handle_manual(cmd_handler):
         except Exception:
             pass
         cmd_handler({"cmd": "motors_control", "enable": False})
+        cmd_handler({"cmd": "reset_head"})
         set_state(PiRobotState.IDLE)
         return
 
@@ -154,18 +160,66 @@ def handle_manual(cmd_handler):
 
 
 def handle_error(cmd_handler):
-    
-    raise NotImplementedError("handle_error is not implemented yet")
+    """
+    On ERROR: stop motors, clear tasks, and reset to INIT.
+    """
+    raspi_state = getattr(cmd_handler, "raspi_state", None)
+    set_state = getattr(cmd_handler, "set_state", None)
+    if raspi_state:
+        try:
+            if hasattr(raspi_state, "task_manager"):
+                raspi_state.task_manager.clear()  # type: ignore[attr-defined]
+        except Exception:
+            pass
+    try:
+        cmd_handler({"cmd": "stop"})
+        cmd_handler({"cmd": "motors_control", "enable": False})
+    except Exception:
+        pass
+    if set_state:
+        set_state(PiRobotState.INIT)
 
 
-def handle_deticscan(cmd_handler):
-    """TODO: implement DETICSCAN handling logic."""
-    raise NotImplementedError("handle_deticscan is not implemented yet")
+def handle_deticscan(cmd_handler, object_name: str = "") -> tuple | None:
+    """
+    Look for an object_name in the latest detic detections stored on raspi_state.
+    Returns the detection bbox if found, otherwise None.
+    """
+    raspi_state = getattr(cmd_handler, "raspi_state", None)
+    if not raspi_state or not object_name:
+        return None
+    det = raspi_state.find_detic_detection(object_name)
+    if det:
+        print(f"[pi_robot] Detected {object_name}: bbox={det.get('bbox')}, score={det.get('score')}")
+        try:
+            raspi_state.log_event("detic_found", label=object_name, bbox=det.get("bbox"), score=det.get("score"))
+        except Exception:
+            pass
+        return det.get("bbox")
+    else:
+        print(f"[pi_robot] {object_name} not found in detic detections")
+    return None
 
 
-def handle_facescan(cmd_handler):
-    """TODO: implement FACESCAN handling logic."""
-    raise NotImplementedError("handle_facescan is not implemented yet")
+def handle_facescan(cmd_handler, person_name: str = "") -> tuple | None:
+    """
+    Look for a person_name in the latest face detections stored on raspi_state.
+    Returns the detection bbox if found, otherwise None.
+    """
+    raspi_state = getattr(cmd_handler, "raspi_state", None)
+    if not raspi_state or not person_name:
+        return None
+    det = raspi_state.find_face_detection(person_name)
+    if det:
+        print(f"[pi_robot] Found face {person_name}: bbox={det.get('bbox')}, sim={det.get('sim')}")
+        try:
+            raspi_state.log_event("face_found", label=person_name, bbox=det.get("bbox"), sim=det.get("sim"))
+        except Exception:
+            pass
+        return det.get("bbox")
+    else:
+        print(f"[pi_robot] Face {person_name} not found")
+    return None
 
 
 def handle_losetarget(cmd_handler):
@@ -174,8 +228,92 @@ def handle_losetarget(cmd_handler):
 
 
 def handle_tracking(cmd_handler):
-    """TODO: implement TRACKING handling logic."""
-    raise NotImplementedError("handle_tracking is not implemented yet")
+    """
+    Tracking loop: push ROI to backend, steer toward center_x, and stop when close enough.
+    """
+    raspi_state = getattr(cmd_handler, "raspi_state", None)
+    set_state = getattr(cmd_handler, "set_state", None)
+    if not raspi_state:
+        return
+
+    try:
+        snap = raspi_state.snapshot()
+        visual = snap.visual if hasattr(snap, "visual") else {}
+        track = visual.get("track") if isinstance(visual, dict) else {}
+    except Exception:
+        track = {}
+
+    bbox = track.get("bbox") if isinstance(track, dict) else None
+    center_x = track.get("center_x") if isinstance(track, dict) else None
+    area = track.get("area") if isinstance(track, dict) else None
+    frame_w = track.get("frame_w") if isinstance(track, dict) else None
+
+    # Push ROI to backend REST if available.
+    def _post_backend(path: str, payload: dict):
+        base = os.environ.get("APP_BACKEND_REST_URL", "http://127.0.0.1:8080").rstrip("/")
+        url = f"{base}/{path.lstrip('/')}"
+        data = json.dumps(payload or {}).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=1.5) as resp:
+                resp.read()
+        except Exception:
+            pass
+
+    if isinstance(bbox, (list, tuple)) and len(bbox) == 4:
+        try:
+            _post_backend("set_tracking_roi", {"bbox": bbox})
+        except Exception:
+            pass
+        if center_x is None:
+            try:
+                x1, _, x2, _ = [float(v) for v in bbox]
+                center_x = 0.5 * (x1 + x2)
+            except Exception:
+                center_x = None
+
+    # Stop when close enough (area threshold).
+    try:
+        area_thresh = float(os.environ.get("PI_TRACK_AREA_STOP", "0.4"))
+    except Exception:
+        area_thresh = 0.4
+    try:
+        if area is not None and float(area) >= area_thresh:
+            try:
+                cmd_handler({"cmd": "stop"})
+                cmd_handler({"cmd": "motors_control", "enable": False})
+            except Exception:
+                pass
+            if set_state:
+                set_state(PiRobotState.APPROACHSTOP)
+            return
+    except Exception:
+        pass
+
+    if center_x is None:
+        return
+    try:
+        frame_w = float(frame_w) if frame_w else float(os.environ.get("PI_TRACK_FRAME_WIDTH", "512"))
+    except Exception:
+        frame_w = 512.0
+    if frame_w <= 0:
+        frame_w = 512.0
+
+    error = (center_x / frame_w) - 0.5  # negative => target left, positive => right
+    turn_gain = float(os.environ.get("PI_TRACK_TURN_GAIN", "1.0"))
+    forward = float(os.environ.get("PI_TRACK_FORWARD", "0.0"))
+
+    w_cmd = max(-0.8, min(0.8, error * turn_gain))
+    v_cmd = forward
+    try:
+        cmd_handler({"cmd": "cmd_vel", "v": v_cmd, "w": w_cmd})
+    except Exception:
+        pass
 
 
 def handle_approach(cmd_handler):
@@ -184,18 +322,112 @@ def handle_approach(cmd_handler):
     raspi_state = getattr(cmd_handler, "raspi_state", None)
     set_state = getattr(cmd_handler, "set_state", None)
     task_manager = getattr(raspi_state, "task_manager", None) if raspi_state else None
-    # Placeholder: here you would add navigation/approach logic.
-    # For now, immediately finish the task and return to IDLE.
+    task = None
     if task_manager:
-        try:
-            task_manager.finish_current()
-        except Exception:
-            pass
-    if set_state:
-        cmd_handler({"cmd": "stop"})
-        cmd_handler({"cmd": "motors_control", "enable": False})
-        set_state(PiRobotState.IDLE)
+        task = task_manager.current or task_manager.try_next()
 
+    target_type = (task or {}).get("target_type")
+    target = (task or {}).get("target")
+
+    def finish_and_next() -> bool:
+        """Finish current task; if another exists, re-enter APPROACH."""
+        if task_manager and task:
+            try:
+                task_manager.finish_current()
+            except Exception:
+                pass
+            nxt = task_manager.try_next() if task_manager else None
+            if nxt:
+                if set_state:
+                    set_state(PiRobotState.APPROACH)
+                return True
+        if set_state:
+            set_state(PiRobotState.IDLE)
+        return False
+
+    def seed_tracking(bbox) -> bool:
+        if not bbox:
+            return False
+        try:
+            if raspi_state:
+                current_visual = {}
+                try:
+                    snap = raspi_state.snapshot()
+                    current_visual = snap.visual if hasattr(snap, "visual") else {}
+                except Exception:
+                    current_visual = {}
+                merged_visual = dict(current_visual or {})
+                merged_visual["track"] = {"ts": time.time(), "bbox": bbox}
+                raspi_state.set_visual_state(merged_visual)
+            # Push ROI to backend once when we acquire it.
+            try:
+                base = os.environ.get("APP_BACKEND_REST_URL", "http://127.0.0.1:8080").rstrip("/")
+                url = f"{base}/set_tracking_roi"
+                data = json.dumps({"bbox": bbox}).encode("utf-8")
+                req = urllib.request.Request(
+                    url,
+                    data=data,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                try:
+                    with urllib.request.urlopen(req, timeout=1.5) as resp:
+                        resp.read()
+                except Exception:
+                    pass
+            except Exception:
+                pass
+            if set_state:
+                set_state(PiRobotState.TRACKING)
+            return True
+        except Exception:
+            return False
+
+    scanners = {
+        "object": ("object", lambda tgt: handle_deticscan(cmd_handler, object_name=str(tgt))),
+        "person": ("person", lambda tgt: handle_facescan(cmd_handler, person_name=str(tgt))),
+    }
+
+    label, scanner = scanners.get(str(target_type).lower(), (None, None))
+    if not scanner:
+        print(f"[pi_robot] Unknown approach target: {task}")
+        finish_and_next()
+        return
+
+    print(f"[pi_robot] Approaching {label}: {target}")
+    bbox = None
+    try:
+        bbox = scanner(target)
+    except Exception:
+        bbox = None
+
+    if not bbox:
+        print(f"[pi_robot] {label} {target} not found, skipping task.")
+        finish_and_next()
+        return
+
+    if seed_tracking(bbox):
+        return
+
+    # If tracking seed failed, finish and go idle/next.
+    finish_and_next()
+
+def handle_approachstop(cmd_handler):
+    """Example approach stop handler: stop motion and return to IDLE."""
+    print("[pi_robot] Handling APPROACHSTOP state")
+    set_state = getattr(cmd_handler, "set_state", None)
+
+    try:
+        cmd_handler({"cmd": "stop"})
+    except Exception:
+        pass
+    try:
+        cmd_handler({"cmd": "motors_control", "enable": False})
+    except Exception:
+        pass
+
+    if set_state:
+        set_state(PiRobotState.IDLE)
 
 def handle_discover(*args, **kwargs):
     """TODO: implement DISCOVER handling logic."""
@@ -213,6 +445,7 @@ STATE_HANDLERS = {
     PiRobotState.TRACKING: handle_tracking,
     PiRobotState.APPROACH: handle_approach,
     PiRobotState.DISCOVER: handle_discover,
+    PiRobotState.APPROACHSTOP: handle_approachstop,
 }
 
 
