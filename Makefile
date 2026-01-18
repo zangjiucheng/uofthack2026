@@ -10,7 +10,7 @@ APP_STREAM_RESIZE      ?= 0.8                   # Resize factor for input stream
 APP_STREAM_URL         ?= http://100.124.216.108:8000 # MJPEG stream URL when STREAM_SOURCE=cap
 APP_STREAM_DISCOVER    ?= 0                     # Enable auto-discovery of stream source (pi mode only)
 APP_VIDEO_JPEG_QUALITY ?= 70                    # JPEG quality for video stream
-APP_DETIC_INTERVAL     ?= 4                     # Interval between Detic detections
+APP_DETIC_INTERVAL     ?= 1                     # Interval between Detic detections
 APP_TRACK_MIN_INTERVAL ?= 0.1                   # Min interval between track detections
 APP_FACE_MIN_INTERVAL  ?= 1.0                   # Min interval between face detections
 APP_STREAM_MAX_FPS     ?= 30                    # Max FPS for stream source
@@ -43,7 +43,7 @@ PI_PUB_WS_INTERVAL     ?= 0.3                   # Pi state WS publish interval
 PI_SUB_STATE_WS_HOST   ?= 100.105.226.99              # Backend state WS host
 PI_SUB_STATE_WS_PORT   ?= 8765                  # Backend state WS port
 PI_SUB_STATE_WS_MAX_SIZE ?= 2097152             # Max message size for PI state WS (2 MB)
-PI_DRIVE_LINEAR        ?= 1.8                   # Linear speed multiplier
+PI_DRIVE_LINEAR        ?= 4.8                   # Linear speed multiplier
 PI_DRIVE_ANGULAR       ?= 1.0                   # Angular speed multiplier
 PI_TRACK_FORWARD       ?= 0.8                   # Forward command during tracking
 PI_TRACK_TURN_GAIN     ?= 0.1                   # Turn gain for tracking error [-1,1]

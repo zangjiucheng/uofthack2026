@@ -23,6 +23,7 @@ class TrackState:
     bbox: Optional[Tuple[float, float, float, float]] = None  # x, y, w, h
     area: Optional[float] = None
     center_x: Optional[float] = None
+    err_x: Optional[float] = None
 
 
 @dataclass

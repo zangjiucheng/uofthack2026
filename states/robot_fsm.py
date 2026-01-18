@@ -243,7 +243,7 @@ def handle_tracking(cmd_handler):
     except Exception:
         track = {}
 
-    center_x = track.get("center_x") if isinstance(track, dict) else None
+    err_x = track.get("err_x") if isinstance(track, dict) else None
     area = track.get("area") if isinstance(track, dict) else None
 
     # Stop when close enough (area threshold).
@@ -261,21 +261,22 @@ def handle_tracking(cmd_handler):
     except Exception:
         pass
 
-    if center_x is None:
+    if err_x is None:
         return
 
     try:
-        cx = float(center_x)
+        cx_raw = err_x
+        cx = float(cx_raw)
     except Exception:
         return
 
-    # center_x is already normalized to [-1, 1] (0 means centered).
+    # center_x/err_x is already normalized to [-1, 1] (0 means centered).
     cx = max(-1.0, min(1.0, cx))
     error = cx  # negative => target left, positive => right
     turn_gain = float(os.environ.get("PI_TRACK_TURN_GAIN", "1.0"))
     forward = float(os.environ.get("PI_TRACK_FORWARD", "0.0"))
 
-    print(f"[pi_robot] TRACKING: center_x={cx:.3f}, error={error:.3f}, area={area}, v_cmd={forward:.3f}, w_cmd={error * turn_gain:.3f}")
+    print(f"[pi_robot] TRACKING: err_x={err_x}, error={error:.3f}, area={area}, v_cmd={forward:.3f}, w_cmd={error * turn_gain:.3f}")
 
     w_cmd = max(-0.8, min(0.8, error * turn_gain))
     v_cmd = forward
@@ -467,6 +468,23 @@ def _global_stop_guard(cmd_handler) -> bool:
             cmd_handler({"cmd": "motors_control", "enable": False})
         except Exception:
             pass
+
+        try:
+            base = os.environ.get("APP_BACKEND_REST_URL", "http://127.0.0.1:8080").rstrip("/")
+            url = f"{base}/stop_tracking"
+            req = urllib.request.Request(
+                url,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=1.5) as resp:
+                    resp.read()
+            except Exception as e:
+                print(f"[pi_robot] Failed to stop tracking: {e}")
+        except Exception:
+            pass
+
         return True
     return False
 

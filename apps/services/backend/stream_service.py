@@ -688,6 +688,7 @@ def _track_state_from_tracker(state: TrackerState):
         bbox=bbox,
         area=state.area_s,
         center_x=state.mx_s,
+        err_x=state.err_x,
     )
 
 

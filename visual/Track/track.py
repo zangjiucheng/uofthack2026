@@ -39,6 +39,7 @@ class TrackerState:
         self.last_proc_ts = 0.0
         self.mx_s = None
         self.area_s = None
+        self.err_x = None
         self.last_frame = None
 
 def process_frame(
@@ -62,16 +63,16 @@ def process_frame(
             return state.last_frame.copy(), state
         return frame, state
 
-    if select_new_roi:
-        box = select_roi(frame)
-        if box is not None and box[2] > 0 and box[3] > 0:
-            state.tracker = create_tracker(tracker_kind)
-            roi = tuple(float(v) for v in box)
-            ok_init = state.tracker.init(frame, roi)
-            state.have_roi = bool(ok_init)
-            state.bbox = roi
-            state.mx_s, state.area_s = None, None
-            state.last_seen = time.time()
+        if select_new_roi:
+            box = select_roi(frame)
+            if box is not None and box[2] > 0 and box[3] > 0:
+                state.tracker = create_tracker(tracker_kind)
+                roi = tuple(float(v) for v in box)
+                ok_init = state.tracker.init(frame, roi)
+                state.have_roi = bool(ok_init)
+                state.bbox = roi
+                state.mx_s, state.area_s, state.err_x = None, None, None
+                state.last_seen = time.time()
     elif state.have_roi and state.tracker is not None:
         ok, bbox = state.tracker.update(frame)
         if ok:
@@ -84,6 +85,7 @@ def process_frame(
 
                 cx = frame.shape[1] / 2
                 err_x = (state.mx_s - cx) / cx
+                state.err_x = err_x
                 cv2.rectangle(frame, (x, y), (x + w, y + h), (80, 220, 80), 2)
                 cv2.circle(frame, (int(state.mx_s), int(y + h / 2)), 3, (80, 220, 80), -1)
                 txt = f"{tracker_kind} area={int(state.area_s)} errX={err_x:+.2f}"
@@ -91,9 +93,11 @@ def process_frame(
 
                 state.last_seen = time.time()
             else:
+                state.err_x = None
                 ok = False  # treat tiny boxes as lost
 
         if not ok:
+            state.err_x = None
             if time.time() - state.last_seen > 3.0:
                 pass
             cv2.putText(frame, "Lost... press 's' to reselect", (6, text_y),
