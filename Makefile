@@ -45,6 +45,8 @@ PI_SUB_STATE_WS_PORT   ?= 8765                  # Backend state WS port
 PI_SUB_STATE_WS_MAX_SIZE ?= 2097152             # Max message size for PI state WS (2 MB)
 PI_DRIVE_LINEAR        ?= 1.8                   # Linear speed multiplier
 PI_DRIVE_ANGULAR       ?= 1.0                   # Angular speed multiplier
+PI_TRACK_FORWARD       ?= 0.8                   # Forward command during tracking
+PI_TRACK_TURN_GAIN     ?= 0.1                   # Turn gain for tracking error [-1,1]
 PI_HEAD_YAW_MIN       ?= -60
 PI_HEAD_YAW_MAX       ?= 60
 PI_HEAD_PITCH_MIN     ?= -30
@@ -78,6 +80,7 @@ OLLAMA_MODEL            ?= qwen2.5:3b
 OLLAMA_BASE_URL         ?= http://127.0.0.1:11434
 GEMINI_MODEL            ?= gemini-2.5-flash
 GEMINI_API_KEY 			?= 
+GEMINI_API_KEY2         ?= 
 APP_GEMINI_MAX_OUTPUT_TOKENS ?= 1024
 APP_GEMINI_EMBED_MODEL  ?= text-embedding-004
 APP_PLANNER_TOKEN       ?= 
@@ -93,7 +96,6 @@ APP_MCP_REST_HOST   	?= 127.0.0.1
 APP_MCP_REST_PORT   	?= 8090
 
 APP_BACKEND_REST_URL 	?= http://100.105.226.99:8080
-
 
 run-backend:
 	APP_MODE=backend \
@@ -129,6 +131,7 @@ run-backend:
 
 run-raspi:
 	APP_MODE=raspi \
+	APP_BACKEND_REST_URL=$(APP_BACKEND_REST_URL) \
 	PI_BASE_WIDTH=$(PI_BASE_WIDTH) \
 	PI_STATE_WS=$(PI_STATE_WS) \
 	PI_PUB_STATE_WS_HOST=$(PI_PUB_STATE_WS_HOST) \
@@ -140,6 +143,8 @@ run-raspi:
 	PI_DEBUG_LOCAL=$(PI_DEBUG_LOCAL) \
 	PI_DRIVE_LINEAR=$(PI_DRIVE_LINEAR) \
 	PI_DRIVE_ANGULAR=$(PI_DRIVE_ANGULAR) \
+	PI_TRACK_TURN_GAIN=$(PI_TRACK_TURN_GAIN) \
+	PI_TRACK_FORWARD=$(PI_TRACK_FORWARD) \
 	PI_HEAD_YAW_MIN=$(PI_HEAD_YAW_MIN) \
 	PI_HEAD_YAW_MAX=$(PI_HEAD_YAW_MAX) \
 	PI_HEAD_PITCH_MIN=$(PI_HEAD_PITCH_MIN) \

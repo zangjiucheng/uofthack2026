@@ -243,47 +243,13 @@ def handle_tracking(cmd_handler):
     except Exception:
         track = {}
 
-    bbox = track.get("bbox") if isinstance(track, dict) else None
     center_x = track.get("center_x") if isinstance(track, dict) else None
     area = track.get("area") if isinstance(track, dict) else None
-    frame_w = track.get("frame_w") if isinstance(track, dict) else None
-
-    # Push ROI to backend REST if available.
-    def _post_backend(path: str, payload: dict):
-        base = os.environ.get("APP_BACKEND_REST_URL", "http://127.0.0.1:8080").rstrip("/")
-        url = f"{base}/{path.lstrip('/')}"
-        data = json.dumps(payload or {}).encode("utf-8")
-        req = urllib.request.Request(
-            url,
-            data=data,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=1.5) as resp:
-                resp.read()
-        except Exception:
-            pass
-
-    if isinstance(bbox, (list, tuple)) and len(bbox) == 4:
-        try:
-            _post_backend("set_tracking_roi", {"bbox": bbox})
-        except Exception:
-            pass
-        if center_x is None:
-            try:
-                x1, _, x2, _ = [float(v) for v in bbox]
-                center_x = 0.5 * (x1 + x2)
-            except Exception:
-                center_x = None
 
     # Stop when close enough (area threshold).
+    area_thresh = 22000 # 640 x 480 image, adjust as needed
     try:
-        area_thresh = float(os.environ.get("PI_TRACK_AREA_STOP", "0.4"))
-    except Exception:
-        area_thresh = 0.4
-    try:
-        if area is not None and float(area) >= area_thresh:
+        if area is not None and area >= area_thresh:
             try:
                 cmd_handler({"cmd": "stop"})
                 cmd_handler({"cmd": "motors_control", "enable": False})
@@ -297,16 +263,19 @@ def handle_tracking(cmd_handler):
 
     if center_x is None:
         return
-    try:
-        frame_w = float(frame_w) if frame_w else float(os.environ.get("PI_TRACK_FRAME_WIDTH", "512"))
-    except Exception:
-        frame_w = 512.0
-    if frame_w <= 0:
-        frame_w = 512.0
 
-    error = (center_x / frame_w) - 0.5  # negative => target left, positive => right
+    try:
+        cx = float(center_x)
+    except Exception:
+        return
+
+    # center_x is already normalized to [-1, 1] (0 means centered).
+    cx = max(-1.0, min(1.0, cx))
+    error = cx  # negative => target left, positive => right
     turn_gain = float(os.environ.get("PI_TRACK_TURN_GAIN", "1.0"))
     forward = float(os.environ.get("PI_TRACK_FORWARD", "0.0"))
+
+    print(f"[pi_robot] TRACKING: center_x={cx:.3f}, error={error:.3f}, area={area}, v_cmd={forward:.3f}, w_cmd={error * turn_gain:.3f}")
 
     w_cmd = max(-0.8, min(0.8, error * turn_gain))
     v_cmd = forward
@@ -373,8 +342,8 @@ def handle_approach(cmd_handler):
                 try:
                     with urllib.request.urlopen(req, timeout=1.5) as resp:
                         resp.read()
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"[pi_robot] Failed to set tracking ROI: {e}")
             except Exception:
                 pass
             if set_state:
@@ -387,6 +356,10 @@ def handle_approach(cmd_handler):
         "object": ("object", lambda tgt: handle_deticscan(cmd_handler, object_name=str(tgt))),
         "person": ("person", lambda tgt: handle_facescan(cmd_handler, person_name=str(tgt))),
     }
+
+    if target_type == "person":
+        cmd_handler({"cmd": "reset_head"})
+        cmd_handler({"cmd": "set_head", "yaw": 0.0, "pitch": 20.0})
 
     label, scanner = scanners.get(str(target_type).lower(), (None, None))
     if not scanner:
@@ -423,6 +396,22 @@ def handle_approachstop(cmd_handler):
         pass
     try:
         cmd_handler({"cmd": "motors_control", "enable": False})
+    except Exception:
+        pass
+
+    try:
+        base = os.environ.get("APP_BACKEND_REST_URL", "http://127.0.0.1:8080").rstrip("/")
+        url = f"{base}/stop_tracking"
+        req = urllib.request.Request(
+            url,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=1.5) as resp:
+                resp.read()
+        except Exception as e:
+            print(f"[pi_robot] Failed to stop tracking: {e}")
     except Exception:
         pass
 
