@@ -360,7 +360,7 @@ def handle_approach(cmd_handler):
 
     if target_type == "person":
         cmd_handler({"cmd": "reset_head"})
-        cmd_handler({"cmd": "set_head", "yaw": 0.0, "pitch": 20.0})
+        cmd_handler({"cmd": "set_head", "yaw": 0.0, "pitch": 30.0})
 
     label, scanner = scanners.get(str(target_type).lower(), (None, None))
     if not scanner:
